@@ -1,0 +1,190 @@
+# RNA-seq in iPSC-derived NPCs and neurons
+
+Here we compare the RNA-seq from our iPSC-derived neurons with the Barres lab dataset of sorted mouse brain cells.
+
+```{r Setup, message=FALSE, warning=FALSE, echo=FALSE}
+library(dplyr)
+library(readr)
+library(magrittr)
+library(ggplot2)
+library(pheatmap)
+library(pcaMethods)
+library(DESeq2)
+
+root = "/Users/jeremys/work/opentargets/ipsneurons"
+outputPath = "/Users/jeremys/work/opentargets/ipsneurons/GRCh38/RNA/analysis"
+#setwd("/Users/jeremys/work/opentargets/ipsneurons/src/rna/")
+
+counts.fname = file.path(outputPath, "ipsneurons.counts.txt.gz")
+saveFiles = F
+```
+
+```{r LoadCounts, warning=FALSE, message=FALSE, echo=FALSE}
+readtsv = function(fname, ...) { readr::read_tsv(fname, ...) %>% as.data.frame() }
+
+sample.meta = readtsv(file.path(root, "GRCh38/RNA/meta/ipsneurons.rna.metadata.txt"))
+sample.meta$sampleID = tolower(sample.meta$sampleID)
+rownames(sample.meta) = sample.meta$sampleID
+sample.meta$day = as.factor(sample.meta$day)
+
+readCounts = function(fname) {
+  counts = readtsv(fname)
+  # Fix gene names to remove the version number (e.g. ".4" in ENSG00000223972.4)
+  gene_ids <- gsub("\\.[\\d]+", "", counts[,1], perl=T)
+  counts[,1] = gene_ids
+  rownames(counts) = gene_ids
+  counts
+}
+
+counts = readCounts(counts.fname)
+gene.meta = counts[,c(1,2)]
+counts = counts[, -c(1,2)]
+colnames(counts) = tolower(colnames(counts))
+rownames(gene.meta) = gene.meta$gene_id
+rownames(counts) = gene.meta$gene_id
+
+readCounts.df = data.frame(readCount = colSums(counts), sampleID = colnames(counts))
+sample.meta = sample.meta %>% dplyr::inner_join(readCounts.df, by="sampleID")
+rownames(sample.meta) = sample.meta$sampleID
+
+coldata = data.frame(sampleID = colnames(counts))
+dds = DESeqDataSetFromMatrix(counts, coldata, ~0)
+colnames(dds) = colnames(counts)
+vst = varianceStabilizingTransformation(dds)
+dds = estimateSizeFactors(dds)
+#View(assay(vst))
+counts.deseq = counts(dds, normalized=T)
+colnames(counts.deseq) = colnames(counts)
+
+rpm = apply(counts.deseq, MARGIN=2, FUN=function(x) x / sum(x)) * 1e6
+rpkm = rpm * 1e3
+rpkm = apply(rpkm, MARGIN=2, FUN=function(x) x / gene.meta$length)
+geneMedianRpkm = apply(rpkm, MARGIN=1, FUN=median)
+geneMeanRpkm = apply(rpkm, MARGIN=1, FUN=mean)
+expressedGenes = names(geneMedianRpkm[geneMedianRpkm >= 1])
+
+rpkm.df = cbind(data.frame(gene_id = rownames(rpkm)), rpkm)
+rpkm.mat = as.matrix(rpkm.df[,-1])
+rpkm.avgs.df = data.frame(gene_id = rownames(rpkm.mat),
+                          median.rpkm = rowMedians(rpkm.mat),
+                          mean.rpkm = rowMeans(rpkm.mat),
+                          sd.rpkm = rowSds(rpkm.mat),
+                          mean.rpm = rowMeans(rpm))
+
+txdb = readRDS(file.path(root, "../reference/GRCh38/Homo_sapiens.GRCh38.89.transcript_data.rds"))
+genedb = txdb %>% dplyr::select(ensembl_gene_id, external_gene_name, gene_biotype) %>% 
+  unique() %>% dplyr::rename("gene_id" = "ensembl_gene_id", "gene_name" = "external_gene_name")
+rpkm.avgs.df = rpkm.avgs.df %>% dplyr::left_join(genedb, by="gene_id") %>%
+  dplyr::select(gene_id, gene_name, gene_biotype, median.rpkm, mean.rpkm, sd.rpkm, mean.rpm) %>%
+  arrange(-median.rpkm)
+```
+
+## Compare with Barres mouse brain cell types
+
+The heatmap and correlations show that both BOB and Kolf2 neurons are closest to Barres lab mouse neurons, with fairly high similarity also to oligodendrocyte precursors and astrocytes.
+
+```{r Compare.Barres_rnaseq, warning=FALSE, message=FALSE, echo=FALSE, fig.width=10, fig.height=8}
+barres.df = readtsv(file.path(root, "../reference/Barres_RNAseq/barres_rnaseq.mouse_avg.txt")) %>%
+  dplyr::rename(gene_name = Gene_symbol)
+barres.df$gene_name = toupper(barres.df$gene_name)
+
+#rpkm.df = log2(rpkm+0.1) %>% as.data.frame()
+rpkm.df = rpkm %>% as.data.frame()
+rpkm.df$gene_id = rownames(rpkm.df)
+rpkm.df %<>% dplyr::inner_join(genedb %>% dplyr::select(gene_id, gene_name), by="gene_id")
+rpkm.df$gene_name = toupper(rpkm.df$gene_name)
+
+rpkm.cmp = rpkm.df %>% dplyr::inner_join(barres.df, by="gene_name") %>% dplyr::select(-gene_id, -gene_name, -Description)
+colnames(rpkm.cmp)[1:13] = sample.meta[colnames(rpkm.cmp)[1:13],]$Sample_name
+#cor.pearson = cor(log2(rpkm.cmp + 0.1))
+#pheatmap(cor.pearson, main="Heatmap of gene expression correlations (Pearson)", fontsize_row = 9, fontsize_col = 8, display_numbers = T, number_format = "%.2f", fontsize_number=8)
+
+cor.spearman = cor(rpkm.cmp, method="spearman")
+pheatmap(cor.spearman, main="Heatmap of gene expression correlations (Spearman)", fontsize_row = 9, fontsize_col = 8, display_numbers = T, number_format = "%.2f", fontsize_number=8)
+```
+
+### PCA with all samples together
+
+Not surprisingly, PC1 separates our iPSC-derived sample from the Barres lab samples. I'm not sure what the remaining PCs are showing us.
+
+```{r Compare.Barres_rnaseq.2, warning=FALSE, message=FALSE, echo=FALSE}
+pca.result = pcaMethods::pca(t(log2(rpkm.cmp + 0.1)), nPcs = 5)
+pcs = data.frame(scores(pca.result))
+pcs$Sample_name = rownames(pcs)
+
+pcs.meta = dplyr::left_join(pcs, sample.meta, by="Sample_name")
+pcs.meta$celltype[is.na(pcs.meta$celltype)] = "BarresLab"
+ggplot(pcs.meta, aes(x=PC1, y=PC2, col=celltype)) + geom_text(aes(label = Sample_name), size=3) + geom_point(size=1) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC2, y=PC3, col=celltype)) + geom_text(aes(label = Sample_name), size=3) + geom_point(size=1) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC2, y=PC4, col=celltype)) + geom_text(aes(label = Sample_name), size=3) + geom_point(size=1) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC3, y=PC4, col=celltype)) + geom_text(aes(label = Sample_name), size=3) + geom_point(size=1) + theme_bw(12)
+
+if (saveFiles) {
+  pdf(file.path(outputPath, "celltype_comparison.barres.pdf"), width=9, height=8)
+  pheatmap(cor.pearson, main="Heatmap of gene expression correlations (Pearson)", fontsize_row = 9, fontsize_col = 8, display_numbers = T, number_format = "%.2f", fontsize_number=8)
+pheatmap(cor.spearman, main="Heatmap of gene expression correlations (Spearman)", fontsize_row = 9, fontsize_col = 8, display_numbers = T, number_format = "%.2f", fontsize_number=8)
+  
+  ggplot(pcs.meta, aes(x=PC1, y=PC2, col=celltype)) + geom_text(aes(label = Sample_name), size=3) + geom_point(size=1) + theme_bw(12)
+  ggplot(pcs.meta, aes(x=PC2, y=PC3, col=celltype)) + geom_text(aes(label = Sample_name), size=3) + geom_point(size=1) + theme_bw(12)
+  ggplot(pcs.meta, aes(x=PC2, y=PC4, col=celltype)) + geom_text(aes(label = Sample_name), size=3) + geom_point(size=1) + theme_bw(12)
+  ggplot(pcs.meta, aes(x=PC3, y=PC4, col=celltype)) + geom_text(aes(label = Sample_name), size=3) + geom_point(size=1) + theme_bw(12)
+  dev.off()
+}
+```
+
+### PCA projecting onto axes from mouse cell types
+
+We next do a PCA with axes defined only by the Barres lab samples, and project our samples onto these. All of our samples, including NPCs, are clustered between Neurons, Oligodendrocyte precursors, and Astrocytes, when looking at PC1 vs PC2.
+
+```{r Compare.Barres_rnaseq.3, warning=FALSE, message=FALSE, echo=FALSE}
+#source("~js29/src/R/pca.projection.R")
+source("./pca.projection.R")
+
+ref.mat = log2(as.matrix(barres.df[,3:9])+1)
+rownames(ref.mat) = barres.df$gene_name
+ref.meta = data.frame(ID=colnames(ref.mat),
+                      group=paste0("BAR_", colnames(ref.mat)))
+ref.meta$group = gsub("BAR_Oligodendrocyte_Precursor_Cell", "BAR_Oligo_Precursor", ref.meta$group)
+ref.meta$group = gsub("BAR_Newly_Formed_Oligodendrocyte", "BAR_New_Oligo", ref.meta$group)
+ref.meta$group = gsub("BAR_Myelinating_Oligodendrocytes", "BAR_Myel_Oligo", ref.meta$group)
+ref.meta$group = gsub("BAR_Endothelial_Cells", "BAR_Endothelial", ref.meta$group)
+
+sample.mat = log2(rpkm.df[,1:13] %>% as.matrix() + 1)
+rownames(sample.mat) = rpkm.df$gene_name
+sample.pca.meta = data.frame(ID=sample.meta[colnames(sample.mat), ]$Sample_name,
+                             group=sample.meta[colnames(sample.mat), ]$celltype)
+colnames(sample.mat) = sample.pca.meta$ID
+
+sample.meta.bak = sample.meta
+sample.meta = sample.pca.meta
+
+pcaProj = pcaProjection(ref.mat, ref.meta, sample.mat, sample.pca.meta)
+pca.s = summary(pcaProj$pcaRes)
+groupLoc = pcaGroupMeans(pcaProj$sampleCoords, "PC1", "PC2")
+groupLoc$group = rownames(groupLoc)
+xRange = max(groupLoc$x) - min(groupLoc$x)
+xlim1 = min(groupLoc$x) - 0.05*xRange
+xlim2 = max(groupLoc$x) + 0.05*xRange
+ggplot(pcaProj$sampleCoords, aes(x=PC1, y=PC2, col=group)) +
+  geom_point(alpha=0.7) + theme_bw(12) +
+  geom_text(mapping=aes(x=x, y=y, label=group, col=group), data=groupLoc, size=3) +
+  scale_colour_discrete(guide = FALSE) +
+  coord_cartesian(xlim=c(xlim1, xlim2)) +
+  xlab(sprintf("PC1 (%.1f%%)", pca.s$importance["Proportion of Variance","PC1"]*100)) +
+  ylab(sprintf("PC2 (%.1f%%)", pca.s$importance["Proportion of Variance","PC2"]*100))
+
+groupLoc = pcaGroupMeans(pcaProj$sampleCoords, "PC2", "PC3")
+groupLoc$group = rownames(groupLoc)
+xRange = max(groupLoc$x) - min(groupLoc$x)
+xlim1 = min(groupLoc$x) - 0.05*xRange
+xlim2 = max(groupLoc$x) + 0.05*xRange
+ggplot(pcaProj$sampleCoords, aes(x=PC2, y=PC3, col=group)) +
+  geom_point(alpha=0.7) + theme_bw(12) +
+  geom_text(mapping=aes(x=x, y=y, label=group, col=group), data=groupLoc, size=3) +
+  scale_colour_discrete(guide = FALSE) +
+  coord_cartesian(xlim=c(xlim1, xlim2)) +
+  xlab(sprintf("PC2 (%.1f%%)", pca.s$importance["Proportion of Variance","PC2"]*100)) +
+  ylab(sprintf("PC3 (%.1f%%)", pca.s$importance["Proportion of Variance","PC3"]*100))
+
+```
+

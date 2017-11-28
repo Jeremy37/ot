@@ -1,0 +1,411 @@
+# RNA-seq in iPSC-derived NPCs and neurons
+
+An exploration of RNA-seq data in iPSC-derived neurons. There are 3 main groups of samples: neurons from the BOB cell line differentiated by overexpression of NEUROG2 (aka NGN2); NPCs from classical neuronal diffentiation (~day 12); neurons from classical differentiation (~day 35).
+
+
+```{r Setup, message=FALSE, warning=FALSE, echo=FALSE}
+library(dplyr)
+library(readr)
+library(magrittr)
+library(ggplot2)
+library(pheatmap)
+library(pcaMethods)
+library(DESeq2)
+
+root = "/Users/jeremys/work/opentargets/ipsneurons"
+outputPath = "/Users/jeremys/work/opentargets/ipsneurons/GRCh38/RNA/analysis"
+#setwd("/Users/jeremys/work/opentargets/ipsneurons/src/rna/")
+
+counts.fname = file.path(outputPath, "ipsneurons.counts.txt.gz")
+saveFiles = F
+```
+
+## Summary
+
+First we load data and report some summary stats.
+We'll use DeSeq's variance-stabilized assay value to compute PCs. VST is effectively a log2 transform, but modified to avoid the high variance of the log-tranform for values near zero, based on using estimates across the whole dataset.
+
+Counts of reads mapping to genes are reasonable across all samples (25 - 40 M).
+A fairly large number of genes (15,000) are expressed at >= 1 median RPKM across samples.
+
+```{r LoadCounts, warning=FALSE, message=FALSE, echo=FALSE}
+readtsv = function(fname, ...) { readr::read_tsv(fname, ...) %>% as.data.frame() }
+
+sample.meta = readtsv(file.path(root, "GRCh38/RNA/meta/ipsneurons.rna.metadata.txt"))
+sample.meta$sampleID = tolower(sample.meta$sampleID)
+rownames(sample.meta) = sample.meta$sampleID
+sample.meta$day = as.factor(sample.meta$day)
+
+readCounts = function(fname) {
+  counts = readtsv(fname)
+  # Fix gene names to remove the version number (e.g. ".4" in ENSG00000223972.4)
+  gene_ids <- gsub("\\.[\\d]+", "", counts[,1], perl=T)
+  counts[,1] = gene_ids
+  rownames(counts) = gene_ids
+  counts
+}
+
+counts = readCounts(counts.fname)
+gene.meta = counts[,c(1,2)]
+counts = counts[, -c(1,2)]
+colnames(counts) = tolower(colnames(counts))
+rownames(gene.meta) = gene.meta$gene_id
+rownames(counts) = gene.meta$gene_id
+
+readCounts = data.frame(readCount = colSums(counts), sampleID = colnames(counts))
+sample.meta = sample.meta %>% dplyr::inner_join(readCounts, by="sampleID")
+rownames(sample.meta) = sample.meta$sampleID
+
+ggplot(sample.meta, aes(x=Sample_name, y=readCount)) + geom_bar(stat="identity") + theme_bw(12) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Count of reads mapping to genes")
+
+coldata = data.frame(sampleID = colnames(counts))
+dds = DESeqDataSetFromMatrix(counts, coldata, ~0)
+colnames(dds) = colnames(counts)
+vst = varianceStabilizingTransformation(dds)
+dds = estimateSizeFactors(dds)
+#View(assay(vst))
+counts.deseq = counts(dds, normalized=T)
+colnames(counts.deseq) = colnames(counts)
+
+rpm = apply(counts.deseq, MARGIN=2, FUN=function(x) x / sum(x)) * 1e6
+rpkm = rpm * 1e3
+rpkm = apply(rpkm, MARGIN=2, FUN=function(x) x / gene.meta$length)
+geneMedianRpkm = apply(rpkm, MARGIN=1, FUN=median)
+geneMeanRpkm = apply(rpkm, MARGIN=1, FUN=mean)
+expressedGenes = names(geneMedianRpkm[geneMedianRpkm >= 1])
+
+print(paste("Number of genes with median expression RPKM >= 1:", length(expressedGenes)))
+vst.vals.x = assay(vst)[expressedGenes,]
+```
+
+NGN2 is expressed at high levels in BOB cell lines at day 9, and lower by day 11.
+Kolf2 neuronal samples 3 and 4 seem to also have higher NGN2 expression than other Kolf2 samples.
+
+Humanin / MT-RNR2 is a highly expressed rRNA gene potentially relevant to AD. It has higher expression in BOB cell lines than Kolf2.
+
+```{r NEUROG2.expr, warning=FALSE, message=FALSE, echo=FALSE}
+# NEUROG2 expression
+ngn2.df = rpkm["ENSG00000178403",] %>% as.data.frame()
+colnames(ngn2.df) = "RPKM"
+ngn2.df$sampleID = rownames(ngn2.df)
+ngn2.df = ngn2.df %>% dplyr::left_join(sample.meta %>% dplyr::select(sampleID, Sample_name))
+ggplot(ngn2.df, aes(Sample_name, RPKM)) + geom_bar(stat="identity", fill = "dodgerblue") +
+  theme_bw(12) + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("NEUROG2 expression")
+  
+#apply(rpkm, 2, function(x) sum(x>1))
+
+gene.df = rpkm["ENSG00000210082",] %>% as.data.frame()
+colnames(gene.df) = "RPKM"
+gene.df$sampleID = rownames(gene.df)
+gene.df = gene.df %>% dplyr::left_join(sample.meta %>% dplyr::select(sampleID, Sample_name))
+ggplot(gene.df, aes(Sample_name, RPKM)) + geom_bar(stat="identity", fill = "dodgerblue") +
+  theme_bw(12) + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Humanin (MT-RNR2) expression")
+```
+
+
+```{r RNAseq.saveFiles, warning=FALSE, message=FALSE, echo=FALSE}
+rpkm.save = cbind(data.frame(gene_id = rownames(rpkm)), rpkm)
+
+rpkm.mat = as.matrix(rpkm.save[,-1])
+rpkm.avgs.df = data.frame(gene_id = rownames(rpkm.mat),
+                          median.rpkm = rowMedians(rpkm.mat),
+                          mean.rpkm = rowMeans(rpkm.mat),
+                          sd.rpkm = rowSds(rpkm.mat),
+                          mean.rpm = rowMeans(rpm))
+
+txdb = readRDS(file.path(root, "../reference/GRCh38/Homo_sapiens.GRCh38.89.transcript_data.rds"))
+genedb = txdb %>% dplyr::select(ensembl_gene_id, external_gene_name, gene_biotype) %>% 
+  unique() %>% dplyr::rename("gene_id" = "ensembl_gene_id", "gene_name" = "external_gene_name")
+rpkm.avgs.df = rpkm.avgs.df %>% dplyr::left_join(genedb, by="gene_id") %>%
+  dplyr::select(gene_id, gene_name, gene_biotype, median.rpkm, mean.rpkm, sd.rpkm, mean.rpm) %>%
+  arrange(-median.rpkm)
+
+if (saveFiles) {
+  gzf = gzfile(file.path(outputPath, "ipsneurons.fpkm.txt.gz"), "w")
+  write.table(rpkm.save, file=gzf, col.names=T, row.names=F, quote=F, sep="\t")
+  close(gzf)
+  
+  write.table(rpkm.avgs.df, file=file.path(outputPath, "ipsneurons.fpkm.averages.txt"), col.names=T, row.names=F, quote=F, sep="\t")
+}
+```
+
+## All samples
+
+Explore PCs for expressed genes across all samples.
+PC1 explains most of the variance and distinguishes iNs from NPCs and neurons.
+
+```{r PCA.x.allsamples, warning=FALSE, message=FALSE, echo=FALSE}
+pca.result = pcaMethods::pca(t(vst.vals.x), nPcs = 5)
+pcs = data.frame(scores(pca.result))
+pcs$sampleID = rownames(pcs)
+pcs.meta = dplyr::left_join(pcs, sample.meta, by="sampleID")
+
+PCnames = factor(names(pca.result@R2), levels=c("PC1", "PC2", "PC3", "PC4", "PC5"))
+ggplot(data.frame(R2=pca.result@R2, PC=PCnames), aes(x=PC, y=R2)) +
+  geom_bar(stat="identity") + ggtitle("Variance explained by RNA-seq PCs")
+
+vst.vals.tmp = vst.vals.x
+colnames(vst.vals.tmp) = sample.meta[colnames(vst.vals.x),]$Sample_name
+cor.pearson = cor(vst.vals.tmp)
+pheatmap(cor.pearson, main="Heatmap of gene expression correlations")
+
+ggplot(pcs.meta, aes(x=PC1, y=PC2, col=celltype)) + geom_text(aes(label = Sample_name), size=3) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC1, y=PC3, col=celltype)) + geom_text(aes(label = Sample_name), size=3) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC2, y=PC3, col=celltype)) + geom_text(aes(label = Sample_name), size=3) + theme_bw(12)
+
+ggplot(pcs.meta, aes(x=PC1, y=PC2, col=density)) + geom_text(aes(label = Sample_name), size=3) + theme_bw(12)
+```
+
+
+## iNeurons
+
+Explore PCs separately for iNeurons.
+PC1 and PC2 together distinguish day 9 from day 11 iNeurons.
+Together they may also capture a bit of variance due to cell density.
+
+```{r PCA.x.iNeuron, warning=FALSE, message=FALSE, echo=FALSE}
+vst.ineuron = vst.vals.x %>% as.data.frame() %>%
+  dplyr::select(sample.meta %>% filter(celltype == "iNeuron", sampleID %in% colnames(vst.vals.x)) %>% .$sampleID)
+pca.result = pcaMethods::pca(t(vst.ineuron), nPcs = 5)
+pcs = data.frame(scores(pca.result))
+pcs$sampleID = rownames(pcs)
+pcs.meta = dplyr::left_join(pcs, sample.meta, by="sampleID")
+
+PCnames = factor(names(pca.result@R2), levels=c("PC1", "PC2", "PC3", "PC4", "PC5"))
+ggplot(data.frame(R2=pca.result@R2, PC=PCnames), aes(x=PC, y=R2)) +
+  geom_bar(stat="identity") + ggtitle("Variance explained by RNA-seq PCs")
+
+ggplot(pcs.meta, aes(x=PC1, y=PC2, col=density)) + geom_text(aes(label = Sample_name), size=3) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC1, y=PC3, col=density)) + geom_text(aes(label = Sample_name), size=3) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC2, y=PC3, col=density)) + geom_text(aes(label = Sample_name), size=3) + theme_bw(12)
+
+ggplot(pcs.meta, aes(x=PC1, y=PC2, col=day)) + geom_text(aes(label = Sample_name), size=3) + theme_bw(12)
+```
+
+
+## NPCs/neurons
+
+Explore PCs separately for NPCs/neurons.
+PC1 and PC2 together distinguish NPCs from neurons, and PC2 may separate out the cell cultures marked as low density.
+
+```{r PCA.x.neuron, warning=FALSE, message=FALSE, echo=FALSE}
+vst.neuron = vst.vals.x %>% as.data.frame() %>%
+  dplyr::select(sample.meta %>% filter(celltype != "iNeuron", sampleID %in% colnames(vst.vals.x)) %>% .$sampleID)
+pca.result = pcaMethods::pca(t(vst.neuron), nPcs = 5)
+pcs = data.frame(scores(pca.result))
+pcs$sampleID = rownames(pcs)
+pcs.meta = dplyr::left_join(pcs, sample.meta, by="sampleID")
+
+PCnames = factor(names(pca.result@R2), levels=c("PC1", "PC2", "PC3", "PC4", "PC5"))
+ggplot(data.frame(R2=pca.result@R2, PC=PCnames), aes(x=PC, y=R2)) +
+  geom_bar(stat="identity") + ggtitle("Variance explained by RNA-seq PCs")
+
+ggplot(pcs.meta, aes(x=PC1, y=PC2, col=celltype)) + geom_text(aes(label = Sample_name), size=3) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC1, y=PC3, col=celltype)) + geom_text(aes(label = Sample_name), size=3) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC2, y=PC3, col=celltype)) + geom_text(aes(label = Sample_name), size=3) + theme_bw(12)
+
+ggplot(pcs.meta, aes(x=PC1, y=PC2, col=density)) + geom_text(aes(label = Sample_name), size=3) + theme_bw(12)
+```
+
+## Genes differentially expressed between NGN2 and classical diff
+
+Around 10,000 genes are differentially expressed between NGN2 and classical iPSC-derived neurons (not including NPCs).
+
+```{r Diffexp.NGN2.classical, warning=FALSE, message=FALSE, echo=FALSE}
+sample.meta.no_npc = sample.meta %>% filter(celltype != "NPC")
+counts.no_npc = counts[,sample.meta.no_npc$sampleID]
+counts.no_npc = counts.no_npc[rowMeans(counts.no_npc) > 0,]
+dds = DESeqDataSetFromMatrix(counts.no_npc, sample.meta.no_npc, ~celltype)
+colnames(dds) = colnames(counts.no_npc)
+vst = varianceStabilizingTransformation(dds)
+dds = estimateSizeFactors(dds)
+dds = DESeq(dds, parallel=T)
+
+deseq.result = results(dds)
+#par(mai=c(1.2,1.2,1,1))
+#plotMA(deseq.result, main="DESeq2 - NGN2 diff vs. classical", ylim=c(-8, 8))
+
+deseq.res.df = deseq.result %>% as.data.frame()
+deseq.res.df$fc = 2^(abs(deseq.res.df$log2FoldChange)) * sign(deseq.res.df$log2FoldChange)
+deseq.res.df$gene_id = rownames(deseq.res.df)
+deseq.res.df %<>% inner_join(rpkm.avgs.df, by = "gene_id") %>% arrange(padj)
+# Genes with positive fold change are higher in classical neurons
+
+if (saveFiles) {
+  gzf = gzfile(file.path(outputPath, "deseq.NGN2.vs.Kolf2_neurons.txt.gz"), "w")
+  write.table(deseq.res.df, file=gzf, col.names=T, row.names=F, quote=F, sep="\t")
+  close(gzf)
+}
+
+#deseq.res.df = deseq.res.df %>% filter(padj < 0.01)
+rownames(deseq.res.df) = deseq.res.df$gene_id
+res.tmp1 = deseq.res.df %>% filter(baseMean > 1e4, abs(log2FoldChange) > 2)
+res.tmp2 = deseq.res.df %>% filter(baseMean > 1e3, abs(log2FoldChange) > 7)
+res.tmp3 = deseq.res.df %>% filter(baseMean > 1e2, abs(log2FoldChange) > 9)
+res.tmp = rbind(res.tmp1, res.tmp2)
+#res.tmp = rbind(res.tmp1, res.tmp2, res.tmp3)
+res.subset = deseq.res.df[res.tmp$gene_id,]
+
+p = ggplot(deseq.res.df %>% mutate(sig=(padj < 0.01)), aes(x=baseMean, y=log2FoldChange, col=sig)) +
+  geom_point(size=0.5) +
+  scale_color_manual(values=c("black", "red", "dodgerblue")) +
+  theme_bw(14) +
+  scale_x_log10() + xlab("DESeq2 baseMean expression") +
+  theme(legend.position="none", panel.grid=element_blank()) +
+  geom_point(data=res.subset, mapping=aes(baseMean, log2FoldChange, col="green"), size=1.5) +
+  annotate(geom="text", x=res.subset$baseMean, y=res.subset$log2FoldChange, label=res.subset$gene_name, hjust = -0.2, size=2.2) +
+  coord_cartesian(xlim=c(1e0, 1e5), ylim=c(-13, 15)) +
+  ggtitle("DESeq2 - NGN2 diff vs. classical")
+print(p)
+if (saveFiles) {
+  pdf(file.path(outputPath, "deseq.NGN2.vs.Kolf2_neurons.full.pdf"), width=7, height=5)
+  print(p)
+  dev.off()
+}
+```
+
+Genes upregulated in classical differentiated neurons relative to NGN2 neurons.
+
+```{r Diffexp.NGN2.classical.2, warning=FALSE, message=FALSE, echo=FALSE}
+res.tmp1 = deseq.res.df %>% filter(baseMean > 0.8e4, abs(log2FoldChange) > 2)
+res.tmp2 = deseq.res.df %>% filter(baseMean > 2e3, abs(log2FoldChange) > 3.9)
+res.tmp3 = deseq.res.df %>% filter(baseMean > 1e3, abs(log2FoldChange) > 6)
+res.tmp4 = deseq.res.df %>% filter(baseMean > 0.8e2, abs(log2FoldChange) > 8)
+res.tmp = rbind(res.tmp1, res.tmp2, res.tmp3, res.tmp4)
+res.subset = deseq.res.df[res.tmp$gene_id,]
+
+p = ggplot(deseq.res.df %>% mutate(sig=(padj < 0.01)), aes(x=baseMean, y=log2FoldChange, col=sig)) +
+  geom_point(size=0.5) +
+  scale_color_manual(values=c("black", "red", "dodgerblue")) +
+  theme_bw(14) +
+  scale_x_log10() + xlab("DESeq2 baseMean expression") +
+  theme(legend.position="none", panel.grid=element_blank()) +
+  geom_point(data=res.subset, mapping=aes(baseMean, log2FoldChange, col="green"), size=1.5) +
+  annotate(geom="text", x=res.subset$baseMean, y=res.subset$log2FoldChange, label=res.subset$gene_name, hjust = -0.2, size=2.2) +
+  coord_cartesian(xlim=c(0.7e2, 1e5), ylim=c(2, 12.5)) +
+  ggtitle("DESeq2 - NGN2 diff vs. classical")
+print(p)
+if (saveFiles) {
+  pdf(file.path(outputPath, "deseq.NGN2.vs.Kolf2_neurons.upInKolf2.pdf"), width=7, height=5)
+  print(p)
+  dev.off()
+}
+```
+
+Genes upregulated in NGN2 neurons relative to classical differentiated neurons.
+
+```{r Diffexp.NGN2.classical.3, warning=FALSE, message=FALSE, echo=FALSE}
+res.tmp1 = deseq.res.df %>% filter(baseMean > 0.8e4, abs(log2FoldChange) > 2.5)
+res.tmp2 = deseq.res.df %>% filter(baseMean > 2e3, abs(log2FoldChange) > 3.9)
+res.tmp3 = deseq.res.df %>% filter(baseMean > 1e3, abs(log2FoldChange) > 6)
+res.tmp4 = deseq.res.df %>% filter(baseMean > 0.8e2, abs(log2FoldChange) > 8)
+res.tmp = rbind(res.tmp1, res.tmp2, res.tmp3, res.tmp4)
+res.subset = deseq.res.df[res.tmp$gene_id,]
+
+p = ggplot(deseq.res.df %>% mutate(sig=(padj < 0.01)), aes(x=baseMean, y=log2FoldChange, col=sig)) +
+  geom_point(size=0.5) +
+  scale_color_manual(values=c("black", "red", "dodgerblue")) +
+  theme_bw(14) +
+  scale_x_log10() + xlab("DESeq2 baseMean expression") +
+  theme(legend.position="none", panel.grid=element_blank()) +
+  geom_point(data=res.subset, mapping=aes(baseMean, log2FoldChange, col="green"), size=1.5) +
+  annotate(geom="text", x=res.subset$baseMean, y=res.subset$log2FoldChange, label=res.subset$gene_name, hjust = -0.2, size=2.2) +
+  coord_cartesian(xlim=c(0.7e2, 1e5), ylim=c(-13, -2)) +
+  ggtitle("DESeq2 - NGN2 diff vs. classical")
+print(p)
+if (saveFiles) {
+  pdf(file.path(outputPath, "deseq.NGN2.vs.Kolf2_neurons.upInNGN2.pdf"), width=7, height=5)
+  print(p)
+  dev.off()
+}
+```
+
+```{r Diffexp.NGN2.classical.enrichment, warning=FALSE, message=FALSE, echo=FALSE}
+deseq.pathwayEnrich = deseq.res.df %>%
+  filter(padj < 1e-4, mean.rpkm > 1) %>%
+  dplyr::select(gene_id, log2FoldChange) %>%
+  arrange(-log2FoldChange)
+
+deseq.pathwayEnrich.top1k = deseq.res.df %>%
+  filter(mean.rpkm > 1) %>%
+  arrange(padj) %>% filter(between(row_number(), 1, 1000)) %>%
+  dplyr::select(gene_id, log2FoldChange) %>%
+  arrange(-log2FoldChange)
+
+if (saveFiles) {
+  write.table(deseq.pathwayEnrich, file.path(outputPath, "diffexp/deseq.NGNG2.vs.Kolf2_neurons.forPathwayEnrichment.txt"), col.names=F, row.names=F, quote=F)
+  write.table(deseq.pathwayEnrich.top1k, file.path(outputPath, "diffexp/deseq.NGNG2.vs.Kolf2_neurons.forPathwayEnrichment.top1000.txt"), col.names=F, row.names=F, quote=F)
+}
+```
+
+## Genes differentially expressed between NGN2 days 9 and 11
+
+Just under 1,000 genes are differentially expressed between days 9 and 11 of NGN2-differentiated neurons.
+
+```{r Diffexp.NGN2.day9vs11, warning=FALSE, message=FALSE, echo=FALSE}
+sample.meta.bob = sample.meta %>% filter(celltype == "iNeuron")
+counts.bob = counts[,sample.meta.bob$sampleID]
+counts.bob = counts.bob[rowMeans(counts.bob) > 0,]
+dds = DESeqDataSetFromMatrix(counts.bob, sample.meta.bob, ~day)
+colnames(dds) = colnames(counts.bob)
+vst = varianceStabilizingTransformation(dds)
+dds = estimateSizeFactors(dds)
+dds = DESeq(dds, parallel=T)
+
+deseq.result = results(dds)
+deseq.res.df = deseq.result %>% as.data.frame()
+deseq.res.df$fc = 2^(abs(deseq.res.df$log2FoldChange)) * sign(deseq.res.df$log2FoldChange)
+deseq.res.df$gene_id = rownames(deseq.res.df)
+deseq.res.df %<>% inner_join(rpkm.avgs.df, by = "gene_id") %>% arrange(padj)
+# Positive fold change means higher in day11 ineurons
+
+if (saveFiles) {
+  gzf = gzfile(file.path(outputPath, "deseq.NGN2.day9.vs.day11.txt.gz"), "w")
+  write.table(deseq.res.df, file=gzf, col.names=T, row.names=F, quote=F, sep="\t")
+  close(gzf)
+}
+
+#deseq.res.df = deseq.res.df %>% filter(padj < 0.01)
+rownames(deseq.res.df) = deseq.res.df$gene_id
+res.tmp1 = deseq.res.df %>% filter(baseMean > 0.8e3, abs(log2FoldChange) > 1.9)
+res.tmp2 = deseq.res.df %>% filter(baseMean > 1e1, abs(log2FoldChange) > 2.9)
+res.tmp = rbind(res.tmp1, res.tmp2)
+res.subset = deseq.res.df[res.tmp$gene_id,]
+
+p = ggplot(deseq.res.df %>% mutate(sig=(padj < 0.01 & !is.na(padj))), aes(x=baseMean, y=log2FoldChange, col=sig)) +
+  geom_point(size=0.5) +
+  scale_color_manual(values=c("black", "red", "dodgerblue")) +
+  theme_bw(14) +
+  scale_x_log10() + xlab("DESeq2 baseMean expression") +
+  theme(legend.position="none", panel.grid=element_blank()) +
+  geom_point(data=res.subset, mapping=aes(baseMean, log2FoldChange, col="green"), size=1.5) +
+  annotate(geom="text", x=res.subset$baseMean, y=res.subset$log2FoldChange, label=res.subset$gene_name, hjust = -0.2, size=2.2) +
+  coord_cartesian(xlim=c(1e0, 1e5), ylim=c(-5, 5)) +
+  ggtitle("DESeq2 - NGN2 diff day 9 vs. 11")
+print(p)
+if (saveFiles) {
+  pdf(file.path(outputPath, "deseq.NGN2.day9.vs.day11.full.pdf"), width=7, height=5)
+  print(p)
+  dev.off()
+}
+```
+
+Of the top 492 DE genes (with mean RPKM > 1) between days 9 and 11, 330 are downregulated and 162 are upregulated.
+Upregulated genes are enriched for negative regulation of neurogenesis / nervous system dev. / cell dev., among many others.
+
+```{r Diffexp.NGN2.day9vs11.enrichment, warning=FALSE, message=FALSE, echo=FALSE}
+sum(deseq.pathwayEnrich$fc > 0)
+sum(deseq.pathwayEnrich$fc < 0)
+deseq.pathwayEnrich = deseq.res.df %>%
+  filter(padj < 1e-3, mean.rpkm > 1) %>%
+  dplyr::select(gene_id, log2FoldChange) %>%
+  arrange(-log2FoldChange)
+if (saveFiles) {
+  write.table(deseq.pathwayEnrich, file.path(outputPath, "diffexp/Diffexp.NGN2.day9vs11.forPathwayEnrichment.txt"), col.names=F, row.names=F, quote=F)
+}
+```
+

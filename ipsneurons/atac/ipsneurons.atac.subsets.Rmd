@@ -1,0 +1,111 @@
+# ATAC-seq in iPSC-derived NPCs and neurons
+
+An exploration of ATAC-seq data in iPSC-derived neurons. There are 4 groups of samples:
+- Kolf2 iPSCs
+- Kolf2 iPSC-derived NPCs (~day 12 classical differentiation)
+- Kolf2 iPSC-derived neurons (~day 35 classical differentiation)
+- neurons from the BOB cell line differentiated by overexpression of NEUROG2 (aka NGN2)
+
+I called peaks using MACS2 in *each* of these subsets, and filtered for FDR < 1%.
+
+```{r Setup, message=FALSE, warning=FALSE, echo=FALSE}
+library(dplyr)
+library(readr)
+library(magrittr)
+library(ggplot2)
+library(pheatmap)
+library(pcaMethods)
+library(DESeq2)
+
+root = "/Users/jeremys/work/opentargets/ipsneurons"
+outputPath = "/Users/jeremys/work/opentargets/ipsneurons/GRCh38/ATAC/analysis"
+#setwd("/Users/jeremys/work/opentargets/ipsneurons/src/atac/")
+
+ipsc.peaks.fname = file.path(root, "GRCh38/ATAC/peaks/atac_ipsc_peaks.narrowPeak")
+npc.peaks.fname = file.path(root, "GRCh38/ATAC/peaks/atac_npc_peaks.narrowPeak")
+neuron.peaks.fname = file.path(root, "GRCh38/ATAC/peaks/atac_neuron_peaks.narrowPeak")
+ineuron.peaks.fname = file.path(root, "GRCh38/ATAC/peaks/atac_ineuron_peaks.narrowPeak")
+jaccard.fname = file.path(root, "GRCh38/ATAC/peaks/peaks_jaccard.upper.txt")
+```
+
+## Peak overlaps
+
+We use the Jaccard metric to consider overlap of peaks called separately in sample subsets. Jaccard varies from 0 to 1 based on the degree of overlap.
+
+We see that NPCs overlap most with the neurons they become. iNeurons have similar overlap with NPCs and neurons.
+
+```{r CheckPeakOverlap, warning=FALSE, message=FALSE, echo=FALSE}
+readtsv = function(fname, ...) { readr::read_tsv(fname, ...) %>% as.data.frame() }
+
+jaccard.df = readtsv(jaccard.fname, col_types="cdddd")
+rownames(jaccard.df) = jaccard.df$group
+pheatmap(jaccard.df[,2:5] %>% as.matrix(), cluster_rows = F, cluster_cols = F, display_numbers = T, number_format = "%.2f", fontsize_number=10,
+         main = "Jaccard: overlap of peaks in sample subsets")
+```
+
+## Peak size and number
+
+```{r ComparePeaks, warning=FALSE, message=FALSE, echo=FALSE}
+# Read peak metadata
+ipsc.peaks = readtsv(ipsc.peaks.fname, col_names = c("chr", "start", "end", "peakID", "score", "scrap", "foldChange", "log10pval", "log10qval", "summitPos"))
+npc.peaks = readtsv(npc.peaks.fname, col_names = c("chr", "start", "end", "peakID", "score", "scrap", "foldChange", "log10pval", "log10qval", "summitPos"))
+neuron.peaks = readtsv(neuron.peaks.fname, col_names = c("chr", "start", "end", "peakID", "score", "scrap", "foldChange", "log10pval", "log10qval", "summitPos"))
+ineuron.peaks = readtsv(ineuron.peaks.fname, col_names = c("chr", "start", "end", "peakID", "score", "scrap", "foldChange", "log10pval", "log10qval", "summitPos"))
+
+ipsc.peaks$group = "iPSC"
+npc.peaks$group = "NPC"
+neuron.peaks$group = "neuron"
+ineuron.peaks$group = "iNeuron"
+
+allpeaks = rbind(ipsc.peaks, npc.peaks, neuron.peaks, ineuron.peaks)
+allpeaks$length = allpeaks$end - allpeaks$start
+
+ggplot(allpeaks, aes(x=length, col=group)) + geom_density() + theme_bw(12) +
+  ggtitle("ATAC-seq peak size") + xlab("peak size (bp)")
+
+ggplot(allpeaks, aes(x=length, col=group)) + geom_density() + theme_bw(12) +
+  ggtitle("ATAC-seq peak size") + xlab("peak size (bp)") +
+  coord_cartesian(xlim=c(75,800))
+
+peak.meta = data.frame(group = c("iPSC", "NPC", "neuron", "iNeuron"),
+                       numPeaks = c(nrow(ipsc.peaks), nrow(npc.peaks), nrow(neuron.peaks), nrow(ineuron.peaks)),
+                       medianPeakSize = c(median(allpeaks %>% filter(group == "iPSC") %>% .$length),
+                                          median(allpeaks %>% filter(group == "NPC") %>% .$length),
+                                          median(allpeaks %>% filter(group == "neuron") %>% .$length),
+                                          median(allpeaks %>% filter(group == "iNeuron") %>% .$length)),
+                       totalSize = c(sum(allpeaks %>% filter(group == "iPSC") %>% .$length),
+                                     sum(allpeaks %>% filter(group == "NPC") %>% .$length),
+                                     sum(allpeaks %>% filter(group == "neuron") %>% .$length),
+                                     sum(allpeaks %>% filter(group == "iNeuron") %>% .$length))
+                      )
+
+ggplot(peak.meta, aes(group, totalSize)) + geom_bar(stat="identity") + theme_bw(12) + ggtitle("Total peak coverage")
+ggplot(peak.meta, aes(group, numPeaks)) + geom_bar(stat="identity") + theme_bw(12) + ggtitle("Number of peaks")
+ggplot(peak.meta, aes(group, medianPeakSize)) + geom_bar(stat="identity") + theme_bw(12) + ggtitle("Median peak size")
+```
+
+The fraction of reads in peaks when including only main chromosome peaks (no chrM) is slightly higher (43% to 57%).
+
+```{r CheckReadCounts.2, warning=FALSE, message=FALSE, echo=FALSE}
+counts = readCounts(counts.mainchrs.fname)
+peak.meta = counts[,c(1,2)]
+colnames(peak.meta)[1] = "peakID"
+peak.meta = peak.meta %>% dplyr::inner_join(allpeak.meta, by="peakID")
+rownames(peak.meta) = peak.meta$peakID
+
+counts = counts[, -c(1,2)]
+colnames(counts) = tolower(colnames(counts))
+rownames(counts) = peak.meta$peakID
+
+readCounts.df = data.frame(peakCount = colSums(counts), sampleID = colnames(counts), totalCount = counttotals.nochrM[colnames(counts)])
+readCounts.df$peakFraction = readCounts.df$peakCount / readCounts.df$totalCount
+sample.meta2 = sample.meta %>% dplyr::inner_join(readCounts.df, by="sampleID")
+ggplot(sample.meta2, aes(x=Sample_name, y=peakFraction)) + geom_bar(stat="identity") + theme_bw(12) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Fraction of (non-chrM) reads in ATAC-seq peaks") + xlab("")
+
+meanCounts.df = data.frame(peak=rownames(counts), peakMeanCount=rowMeans(counts))
+ggplot(meanCounts.df[meanCounts.df$peakMeanCount < 2^12,], aes(x=log2(peakMeanCount))) +
+  geom_histogram(bins=50) + theme_bw(12)
+```
+
