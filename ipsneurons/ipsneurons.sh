@@ -1,7 +1,7 @@
 newgrp otcoregen # Set primary group to otcoregen so new files have this group by default
 JS=/lustre/scratch115/realdata/mdt3/projects/otcoregen/jeremys
 SEQ=$JS/ipsneurons/GRCh38
-SRC=$JS/ipsneurons/src
+SRC=$JS/src/ipsneurons
 source $JS/software/ipsneurons.software.sh
 kinit # login to iRODS
 
@@ -138,13 +138,13 @@ Rscript $SRC/rna/ipsneurons.combine_counts.R ../irods.sample_lanes.txt .. ipsneu
 
 
 submitJobs.py --MEM 6000 -j atacMacsCallPeak.ineuron -q yesterday \
-   -c "bash $SRC/atac/atac.macs_call_peaks.samples_file.sh meta/ineuron.bamfiles.txt peaks atac_ineuron"
+   -c "bash $SRC/atac/atac.macs_call_peaks.samples_file.sh meta/ineuron.bamfiles.txt peaks atac_ineuron 0.01"
 submitJobs.py --MEM 6000 -j atacMacsCallPeak.ipsc -q yesterday \
-   -c "bash $SRC/atac/atac.macs_call_peaks.samples_file.sh meta/ipsc.bamfiles.txt peaks atac_ipsc"
+   -c "bash $SRC/atac/atac.macs_call_peaks.samples_file.sh meta/ipsc.bamfiles.txt peaks atac_ipsc 0.01"
 submitJobs.py --MEM 6000 -j atacMacsCallPeak.npc -q yesterday \
-   -c "bash $SRC/atac/atac.macs_call_peaks.samples_file.sh meta/npc.bamfiles.txt peaks atac_npc"
+   -c "bash $SRC/atac/atac.macs_call_peaks.samples_file.sh meta/npc.bamfiles.txt peaks atac_npc 0.01"
 submitJobs.py --MEM 6000 -j atacMacsCallPeak.neuron -q yesterday \
-   -c "bash $SRC/atac/atac.macs_call_peaks.samples_file.sh meta/neuron.bamfiles.txt peaks atac_neuron"
+   -c "bash $SRC/atac/atac.macs_call_peaks.samples_file.sh meta/neuron.bamfiles.txt peaks atac_neuron 0.01"
 
 Rscript ~js29/src/utils/counts/narrowPeakToGFF3.R peaks/atac_ipsc_peaks.narrowPeak
 Rscript ~js29/src/utils/counts/narrowPeakToGFF3.R peaks/atac_npc_peaks.narrowPeak
@@ -162,6 +162,29 @@ bedtools jaccard -a peaks/atac_ipsc_peaks.narrowPeak -b peaks/atac_ineuron_peaks
 bedtools jaccard -a peaks/atac_npc_peaks.narrowPeak -b peaks/atac_neuron_peaks.narrowPeak
 bedtools jaccard -a peaks/atac_npc_peaks.narrowPeak -b peaks/atac_ineuron_peaks.narrowPeak
 bedtools jaccard -a peaks/atac_neuron_peaks.narrowPeak -b peaks/atac_ineuron_peaks.narrowPeak
+
+cat meta/ipsc.bamfiles.txt meta/ineuron.bamfiles.txt meta/npc.bamfiles.txt meta/neuron.bamfiles.txt > meta/multisample.bamfiles.txt
+# Use relaxed settings to call peaks (FDR 10%)
+submitJobs.py --MEM 6000 -j atacMacsCallPeak.ineuron.relaxed -q yesterday \
+   -c "bash $SRC/atac/atac.macs_call_peaks.samples_file.sh meta/ineuron.bamfiles.txt peaks atac_ineuron_relaxed 0.1"
+submitJobs.py --MEM 6000 -j atacMacsCallPeak.ipsc.relaxed -q yesterday \
+   -c "bash $SRC/atac/atac.macs_call_peaks.samples_file.sh meta/ipsc.bamfiles.txt peaks atac_ipsc_relaxed 0.1"
+submitJobs.py --MEM 6000 -j atacMacsCallPeak.npc.relaxed -q yesterday \
+   -c "bash $SRC/atac/atac.macs_call_peaks.samples_file.sh meta/npc.bamfiles.txt peaks atac_npc_relaxed 0.1"
+submitJobs.py --MEM 6000 -j atacMacsCallPeak.neuron.relaxed -q yesterday \
+   -c "bash $SRC/atac/atac.macs_call_peaks.samples_file.sh meta/neuron.bamfiles.txt peaks atac_neuron_relaxed 0.1"
+submitJobs.py --MEM 8000 -j atacMacsCallPeak.all.relaxed -q yesterday \
+   -c "bash $SRC/atac/atac.macs_call_peaks.samples_file.sh meta/multisample.bamfiles.txt peaks atac_multisample_relaxed 0.1"
+
+# For the "relaxed" peak calling settings, we expand peaks by 100 bp on each side
+cd peaks
+bedsum.sh atac_ineuron_relaxed_peaks.narrowPeak
+bedsum.sh atac_ineuron_peaks.narrowPeak
+
+for f in *_relaxed_peaks.narrowPeak; do
+    cat $f | gzip > ${f}.orig.gz
+    zcat ${f}.orig.gz | awk 'BEGIN{OFS="\t"}{print $1,$2-100,$3+100,$4,$5,$6,$7,$8,$9,$10}' > $f
+done
 
 
 ###############################################################################
