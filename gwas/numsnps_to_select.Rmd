@@ -1,0 +1,188 @@
+# Exploring AD & PD SNPs to select for follow-up
+
+To select SNPs to test in a massively parallel reporter assay (MPRA), we'll use the statistical information from genome-wide significant loci for the AD and PD GWAS.
+
+```{r Setup, message=FALSE, warning=FALSE, echo=FALSE}
+library(tidyverse)
+
+root = "/Users/jeremys/work/opentargets"
+finemapdir = file.path(root, "gwas/AD/finemap")
+
+credset.df = readr::read_tsv(file.path(finemapdir, "AD.credible_sets.set")) %>%
+  dplyr::select(locus, SNP, everything(), -log10bf) %>%
+  dplyr::rename(wtccc_prob=prob)
+finemap.df = readr::read_tsv(file.path(finemapdir, "AD.finemap.snp")) %>%
+  dplyr::rename(SNP=snp, finemap_prob=snp_prob) %>%
+  dplyr::select(locus, SNP, finemap_prob)
+
+loci.df = credset.df %>% inner_join(finemap.df %>% dplyr::select(-locus), by="SNP") %>%
+  arrange(Chr, locus, -wtccc_prob)
+ad.loci.df = loci.df
+#assertthat::assert_that(nrow(loci.df) == nrow(credset.df))
+```
+
+## Alzheimer's
+
+First, for AD only, we look at how many SNPs we have at different thresholds of causal probability.
+
+```{r ExploreSNPSelections, warning=FALSE, message=FALSE, echo=FALSE}
+
+# How many SNPs do we have at thresholds of causal probability of 0.0001, 0.0002, etc.
+snpSelect.finemap.thresholds.df = data.frame(threshold = seq(0.0001, 1, 0.0001),
+                                  count = sapply(seq(0.0001, 1, 0.0001), FUN = function(x) { sum(loci.df$finemap_prob >= x) }))
+
+snpSelect.wtccc.thresholds.df = data.frame(threshold = seq(0.0001, 1, 0.0001),
+                                count = sapply(seq(0.0001, 1, 0.0001), FUN = function(x) { sum(loci.df$wtccc_prob >= x) }))
+
+ggplot(snpSelect.finemap.thresholds.df, aes(x=threshold, y=count)) + geom_bar(stat="identity") +
+  ggtitle("Number of SNPs above causal probability threshold (finemap prob)") +
+  coord_cartesian(ylim = c(0,1000)) +
+  xlab("SNP probability threshold")
+#ggplot(snpSelect.wtccc.thresholds.df, aes(x=threshold, y=count)) + geom_bar(stat="identity") + ggtitle("Number of SNPs above causal probability threshold (WTCCC prob)") + coord_cartesian(ylim = c(0,1000))
+```
+
+If we just select SNPs in order of their causal probability across all loci, how many do we need to select to get to e.g. 95% of all probability density?
+
+```{r ExploreSNPSelections.2, warning=FALSE, message=FALSE, echo=FALSE}
+snpSelect.finemap.byprob.df = data.frame(finemap_prob = sort(loci.df$finemap_prob, decreasing=T),
+                                  wtccc_prob = sort(loci.df$wtccc_prob, decreasing=T)) %>%
+  dplyr::mutate(finemap_cumsum = cumsum(finemap_prob),
+                finemap_sumfrac = finemap_cumsum / sum(finemap_prob),
+                wtccc_cumsum = cumsum(wtccc_prob),
+                wtccc_sumfrac = wtccc_cumsum / sum(wtccc_prob),
+                snpIndex = 1:nrow(loci.df))
+
+ggplot(snpSelect.finemap.byprob.df %>% filter(snpIndex < 1000), aes(x=snpIndex)) +
+  geom_line(aes(y=finemap_sumfrac)) +
+  ggtitle("AD: fraction of all causal prob captured by top N SNPs") +
+  xlab("top N SNPs")
+
+print("Fraction of causal prob captured by top N SNPs (independent of locus)")
+snpSelect.finemap.byprob.df %>% dplyr::select(snpIndex, finemap_sumfrac) %>%
+  dplyr::rename(topN = snpIndex, causal_frac = finemap_sumfrac) %>%
+  filter(row_number() %in% c(100, 250, 500, 750, 1000))
+```
+
+How many SNPs are in the credible set for different loci?
+```{r ExploreSNPSelections.3, warning=FALSE, message=FALSE, echo=FALSE}
+# First add in a SNP index per locus
+by_locus.df = group_by(loci.df, locus) %>% mutate(id = row_number()) %>%
+  mutate(locusCumProb = cumsum(finemap_prob))
+
+summarise(by_locus.df, numSNPs = n(), credsetSize95 = sum(cs95), credsetSize99 = sum(cs99)) %>%
+  arrange(-credsetSize95)
+```
+
+If we select the top N SNPs per locus, how much of the probability density do we capture at different N? The next plot shows two lines. One is the fraction of all causal probability that we capture when selecting the top N SNPs, and the other line is the causal probability we capture at the locus with the minimum captured by the top N SNPs, i.e. the locus with the most diffuse causal probability.
+
+```{r ExploreSNPSelections.4, warning=FALSE, message=FALSE, echo=FALSE}
+finemapSum = sum(loci.df$finemap_prob)
+snpSelect.finemap.topN.df = data.frame(nTopSNPs = 1:200) %>%
+  dplyr::mutate(cumProb = sapply(nTopSNPs, function(x) { sum(by_locus.df$finemap_prob[by_locus.df$id <= x]) }),
+                cumFrac = cumProb / finemapSum,
+                minFrac = sapply(nTopSNPs, function(x) { min(by_locus.df %>% filter(id == x) %>% .$locusCumProb) }))
+
+snpSelect.finemap.topN.toplot = snpSelect.finemap.topN.df %>%
+  dplyr::rename(cumFractionAllLoci = cumFrac, minLocusFraction = minFrac) %>%
+  tidyr::gather(cumFractionAllLoci, minLocusFraction, key="sumType", value="fraction")
+  
+ggplot(snpSelect.finemap.topN.toplot, aes(x=nTopSNPs, y=fraction, col=sumType)) + 
+  geom_line() 
+
+print("Fraction of causal prob captured by top N SNPs (top N per locus)")
+snpSelect.finemap.topN.df %>% dplyr::select(nTopSNPs, cumFrac, minFrac) %>%
+  dplyr::rename(cumFractionAllLoci = cumFrac, minLocusFraction = minFrac) %>%
+  filter(nTopSNPs %in% c(1, 5, 10, 25, 50, 75, 100, 150))
+```
+
+## Parkinson's
+
+```{r PD.Setup, message=FALSE, warning=FALSE, echo=FALSE}
+finemapdir = file.path(root, "gwas/PD/finemap")
+
+credset.df = readr::read_tsv(file.path(finemapdir, "PD.credible_sets.set")) %>%
+  dplyr::select(locus, SNP, everything(), -log10bf) %>%
+  dplyr::rename(wtccc_prob=prob)
+finemap.df = readr::read_tsv(file.path(finemapdir, "PD.finemap.snp")) %>%
+  dplyr::rename(SNP=snp, finemap_prob=snp_prob) %>%
+  dplyr::select(locus, SNP, finemap_prob)
+
+loci.df = credset.df %>% inner_join(finemap.df %>% dplyr::select(-locus), by="SNP") %>%
+  arrange(Chr, locus, -wtccc_prob)
+pd.loci.df = loci.df
+#assertthat::assert_that(nrow(loci.df) == nrow(credset.df))
+```
+
+Now for PD, we look at the same three plots:
+1. How many SNPs we have at different thresholds of causal probability
+2. Fraction of causal probability captured by top N SNPs across all loci
+3. Fraction of causal probability captured by top N SNPs per locus
+
+```{r ExploreSNPSelections.PD, warning=FALSE, message=FALSE, echo=FALSE}
+
+snpSelectionPlots = function(loci.df) {
+  # How many SNPs do we have at thresholds of causal probability of 0.0001, 0.0002, etc.
+  snpSelect.finemap.thresholds.df = data.frame(threshold = seq(0.0001, 1, 0.0001),
+                                    count = sapply(seq(0.0001, 1, 0.0001), FUN = function(x) { sum(loci.df$finemap_prob >= x) }))
+  
+  p = ggplot(snpSelect.finemap.thresholds.df, aes(x=threshold, y=count)) + geom_bar(stat="identity") +
+    ggtitle("Number of SNPs above causal probability threshold (finemap prob)") +
+    coord_cartesian(ylim = c(0,1000)) +
+    xlab("SNP probability threshold")
+  print(p)
+  
+  snpSelect.finemap.byprob.df = data.frame(finemap_prob = sort(loci.df$finemap_prob, decreasing=T),
+                                  wtccc_prob = sort(loci.df$wtccc_prob, decreasing=T)) %>%
+  dplyr::mutate(finemap_cumsum = cumsum(finemap_prob),
+                finemap_sumfrac = finemap_cumsum / sum(finemap_prob),
+                wtccc_cumsum = cumsum(wtccc_prob),
+                wtccc_sumfrac = wtccc_cumsum / sum(wtccc_prob),
+                snpIndex = 1:nrow(loci.df))
+
+  p = ggplot(snpSelect.finemap.byprob.df %>% filter(snpIndex < 1000), aes(x=snpIndex)) +
+    geom_line(aes(y=finemap_sumfrac)) +
+    ggtitle("Fraction of all causal prob captured by top N SNPs") +
+    xlab("top N SNPs")
+  print(p)
+  
+  print("Fraction of causal prob captured by top N SNPs (independent of locus)")
+  print(snpSelect.finemap.byprob.df %>% dplyr::select(snpIndex, finemap_sumfrac) %>%
+    dplyr::rename(topN = snpIndex, causal_frac = finemap_sumfrac) %>%
+    filter(row_number() %in% c(100, 250, 500, 750, 1000)))
+
+  print("How many SNPs are in the credible set for different loci?")
+  by_locus.df = group_by(loci.df, locus) %>% mutate(id = row_number()) %>%
+    mutate(locusCumProb = cumsum(finemap_prob))
+  print(summarise(by_locus.df, numSNPs = n(), credsetSize95 = sum(cs95), credsetSize99 = sum(cs99)) %>%
+    arrange(-credsetSize95))
+  
+  finemapSum = sum(loci.df$finemap_prob)
+  snpSelect.finemap.topN.df = data.frame(nTopSNPs = 1:200) %>%
+    dplyr::mutate(cumProb = sapply(nTopSNPs, function(x) { sum(by_locus.df$finemap_prob[by_locus.df$id <= x]) }),
+                  cumFrac = cumProb / finemapSum,
+                  minFrac = sapply(nTopSNPs, function(x) { min(by_locus.df %>% filter(id == x) %>% .$locusCumProb) }))
+  
+  snpSelect.finemap.topN.toplot = snpSelect.finemap.topN.df %>%
+    dplyr::rename(cumFractionAllLoci = cumFrac, minLocusFraction = minFrac) %>%
+    tidyr::gather(cumFractionAllLoci, minLocusFraction, key="sumType", value="fraction")
+    
+  p = ggplot(snpSelect.finemap.topN.toplot, aes(x=nTopSNPs, y=fraction, col=sumType)) + 
+    geom_line()
+  print(p)
+  
+  print("Fraction of causal prob captured by top N SNPs (top N per locus)")
+  print(snpSelect.finemap.topN.df %>% dplyr::select(nTopSNPs, cumFrac, minFrac) %>%
+    dplyr::rename(cumFractionAllLoci = cumFrac, minLocusFraction = minFrac) %>%
+    filter(nTopSNPs %in% c(1, 5, 10, 25, 50, 75, 100, 150)))
+}
+
+snpSelectionPlots(loci.df)
+```
+
+## AD and PD combined
+
+```{r ExploreSNPSelections.both, warning=FALSE, message=FALSE, echo=FALSE}
+snpSelectionPlots(rbind(ad.loci.df, pd.loci.df))
+```
+
+
