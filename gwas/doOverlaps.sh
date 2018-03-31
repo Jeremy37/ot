@@ -1,9 +1,10 @@
 #!/bin/bash
 
 F=$1
-fullname=`basename $F`
-NAME="${fullname%.*}"
+NAME=$2
 
+fullname=`basename $F`
+#NAME="${fullname%.*}"
 cat $F | sed '1d' | awk 'BEGIN{OFS="\t"}{print $2,$3-1,$3,$2"_"$3}' > $NAME.input.bed
 cat $F | sed '1d' | awk 'BEGIN{OFS="\t"}{print "chr"$2,$3-1,$3,$2"_"$3}' > $NAME.input.chr.bed
 
@@ -27,15 +28,17 @@ multi_bedintersect.py --snpbed $NAME.input.chr.bed --bedfilelist ./ipsneurons/ne
 multi_bedintersect.py --snpbed $NAME.input.chr.bed --bedfilelist ./ipsneurons/ineuron.atac.bedfile.txt --output ipsneurons/ineuron.atac -vv
 
 multi_bedintersect.py --snpbed $NAME.input.chr.bed --bedfilelist ./ipsneurons/ipsMacrophage.atac.bedfile.txt --output ipsneurons/ipsMacrophage.atac -vv
+multi_bedintersect.py --snpbed $NAME.input.chr.bed --bedfilelist ./ipsneurons/ipsSensoryNeuron.atac.bedfile.txt --output ipsneurons/ipsSensoryNeuron.atac -vv
 
 
 # Merge together all the results
 paste <(head -n 1 $F) \
-      <(echo -e "iPSC\tipsMacrophage\tNPC\tNeuron\tiNeuron\tDNase\tBrain DNase\tTcell DNase\tBcell DNase\tFantom Enh\tRoadmapEnh\tBrain Enh\tTcell Enh\tBcell Enh") \
+      <(echo -e "iPSC\tipsSensNeuron\tipsMacrophage\tNPC\tNeuron\tiNeuron\tDNase\tBrain DNase\tTcell DNase\tBcell DNase\tFantom Enh\tRoadmapEnh\tBrain Enh\tTcell Enh\tBcell Enh") \
       <(echo -e "DNase overlaps\tBrain DNase overlaps\tTcell DNase overlaps\tBcell DNase overlaps\tFantom Enh overlaps\tRoadmapEnh overlaps\tBrain Enh overlaps\tTcell Enh overlaps\tBcell Enh overlaps") \
       > $NAME.annotated.txt
 paste <(sed '1d' $F) \
       <(sed '1d' ipsneurons/ipsc.atac.overlap.summary.txt | cut -f 4) \
+      <(sed '1d' ipsneurons/ipsSensoryNeuron.atac.overlap.summary.txt | cut -f 4) \
       <(sed '1d' ipsneurons/ipsMacrophage.atac.overlap.summary.txt | cut -f 4) \
       <(sed '1d' ipsneurons/npc.atac.overlap.summary.txt | cut -f 4) \
       <(sed '1d' ipsneurons/neuron.atac.overlap.summary.txt | cut -f 4) \

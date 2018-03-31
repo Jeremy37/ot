@@ -62,6 +62,12 @@ dev.off()
 # Now for Parkinson's
 finemapdir = file.path(root, "gwas/PD/finemap")
 
+# Actually there's no point in doing this plot / comparison, because the probabilities
+# in KD's credible_sets.set file are actualy finemap probabilities and not WTCCC,
+# so you get all points on the line x=y.
+credset.df = readr::read_tsv(file.path(finemapdir, "PD.credible_sets.set")) %>%
+  dplyr::select(locus, SNP, everything(), -log10bf) %>%
+  dplyr::rename(wtccc_prob=prob)
 finemap.df = readr::read_tsv(file.path(finemapdir, "PD.finemap.snp")) %>%
   dplyr::rename(SNP=snp, finemap_prob=snp_prob) %>%
   dplyr::select(locus, SNP, finemap_prob)
@@ -69,7 +75,7 @@ finemap.df = readr::read_tsv(file.path(finemapdir, "PD.finemap.snp")) %>%
 loci.df = credset.df %>% inner_join(finemap.df %>% dplyr::select(-locus), by="SNP")
 #assertthat::assert_that(nrow(loci.df) == nrow(credset.df))
 lostSNP.df = credset.df %>% filter(!(SNP %in% loci.df$SNP))
-max(lostSNP.df$wtccc_prob)
+#max(lostSNP.df$wtccc_prob)
 
 pdf(file=file.path(finemapdir, "finemap_cmp_wtccc.pdf"), width = 6, height=4.5)
 for (locusName in unique(loci.df$locus)) {

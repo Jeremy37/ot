@@ -23,7 +23,7 @@ for f in $CREDSET/*.set; do
 done
 
 
-FINEMAP=$ROOT/AD_PD_finemap/AD_finemap_output
+FINEMAP=$ROOT/jeremys/gwas/AD/AD_finemap_output
 # Add "locus" as the first field to the finemap *.snp output, similar to above
 head -n 1 $FINEMAP/1_207750568.IGAP1_GWAX.1.snp | perl -ane 'chomp; print join("\t", "locus", @F)."\n"' > $OUTDIR/AD.finemap.snp
 for f in $FINEMAP/*.snp; do

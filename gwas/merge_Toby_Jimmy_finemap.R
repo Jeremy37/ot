@@ -33,7 +33,7 @@ joined.df = toby.df %>% dplyr::left_join(finemapSet.df %>%
                                            dplyr::select(chrpos, snp, finemap.p, finemap.snpprob, finemap.setprob, finemap.cs95, finemap.cs99),
                                          by="chrpos")
 
-finemap.flt.df = finemapSet.df %>% filter(finemap.snpprob > 0.001,
+finemap.flt.df = finemapSet.df %>% filter(finemap.snpprob >= 0.0001,
                                        !(chrpos %in% joined.df$chrpos)) %>%
   dplyr::select(Chr, pos, snp, finemap.p, finemap.snpprob, finemap.setprob, finemap.cs95, finemap.cs99) %>%
   dplyr::mutate(signal=NA, ref=NA, alt=NA, toby.pval=NA, toby.pval_cond=NA,

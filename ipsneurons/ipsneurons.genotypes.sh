@@ -3,6 +3,7 @@ JS=/lustre/scratch115/realdata/mdt3/projects/otcoregen/jeremys
 # Run CrossMap to lift the HIPSCI VCF from GRCh37 to GRCh38
 HIPSCI_ROOT=/lustre/scratch116/vr/projects/hipsci/releases/data/gtarray/imputed_vcf
 KOLF2_VCF_GRCH37=$HIPSCI_ROOT/PRJEB11752/HPSI0114i-kolf_2/HPSI0114i-kolf_2.wec.gtarray.HumanCoreExome-12_v1_0.imputed_phased.20150604.genotypes.vcf.gz
+cd $JS/ipsneurons/GRCh38/genotypes
 
 # Testing CrossMap
 zcat $KOLF2_VCF_GRCH37 | grep -v "^#" | awk 'BEGIN{OFS="\t"}{print $1,$2-1,$2,$3}' | head -n 100 > test.bed
@@ -38,10 +39,43 @@ mv kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.sorted.vcf.gz kolf_2.imputed_p
 tabix -p vcf kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.vcf.gz
 
 # Subset to SNPs in gene exons
-bcftools view kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.vcf.gz --regions-file $JS/reference/GRCh38/Homo_sapiens.GRCh38.89.exons.bed -O z > kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.exons.vcf.gz
+#bcftools view kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.vcf.gz --regions-file $JS/reference/GRCh38/Homo_sapiens.GRCh38.89.exons.bed -O z > kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.exons.vcf.gz
+bcftools view kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.vcf.gz --regions-file $JS/reference/GRCh38/Homo_sapiens.GRCh38.91.exon_start_end.bed | bcftools sort -O z > kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.exons.vcf.gz
+tabix -p vcf kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.exons.vcf.gz
 
 ###############################################################################
 # Get VCF line for variant by position, e.g. rs356168 (GRCh38, 4:89753280, GRCh37, 4:90674431)
 tabix kolf_2.imputed_phased.20150604.GRCh38.vcf.gz 4:89753280-89753280
 # The variant is not present in KOLF2
 
+
+# Add "chr" to chromosomes in VCF, so that it can be used with other tools that
+# use Chr in the contig names (e.g. ASEReadCounter, given that the BAM files
+# were aligned to a FASTA reference with "chr"
+(zcat kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.vcf.gz | head -n 200 | grep -P '^#' | sed 's/contig=<ID=/contig=<ID=chr/'; \
+ zcat kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.vcf.gz | grep -v -P '^#' | perl -ne 'print "chr".$_;') \
+    | bgzip > kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.chr.tmp.vcf.gz
+
+# Alternatively, could run "bcftools norm -d any" to remove duplicates
+#bcftools norm --fasta-ref $JS/reference/GRCh38/Homo_sapiens.GRCh38_15.fa -d any -Ou kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.chr.tmp.vcf.gz \
+bcftools norm --multiallelics + --fasta-ref $JS/reference/GRCh38/Homo_sapiens.GRCh38_15.fa -Ou kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.chr.tmp.vcf.gz \
+    | bcftools view -m2 -M2 -v snps -Ou \
+    | bcftools sort | bgzip > kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.biallelic.snps.chr.vcf.gz
+
+zcat kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.biallelic.snps.chr.vcf.gz | grep 1490339
+tabix -p vcf kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.biallelic.snps.chr.vcf.gz
+
+bcftools view kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.biallelic.snps.chr.vcf.gz --genotype het -Oz \
+    > kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.biallelic.snps.hets.chr.vcf.gz
+
+tabix -p vcf kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.biallelic.snps.hets.chr.vcf.gz
+
+rm kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.chr.tmp.vcf.gz
+
+zcat kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.biallelic.snps.hets.chr.vcf.gz \
+    | sed 's/^chr//' | bgzip > kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.biallelic.snps.hets.vcf.gz
+    
+(zcat kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.biallelic.snps.hets.chr.vcf.gz | head -n 200 | grep -P '^#' | sed 's/contig=<ID=chr/contig=<ID=/'; \
+ zcat kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.biallelic.snps.hets.chr.vcf.gz | grep -v -P '^#' | sed 's/^chr//') \
+    | bgzip > kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.biallelic.snps.hets.vcf.gz
+tabix -p vcf kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.biallelic.snps.hets.vcf.gz

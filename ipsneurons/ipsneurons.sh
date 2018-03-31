@@ -222,6 +222,8 @@ cut -f 1 irods.sample_lanes.new.txt | submitJobs.py --MEM 1000 --jobname indexBa
 
 cut -f 1 irods.sample_lanes.new.txt | submitJobs.py --MEM 3000 --jobname bamCoverageToBigWig \
     --command "~/src/utils/coverage/bam2bigwig.py --genome GRCh38.genome.txt --indir . --split"
+echo "4860STDY7028461" | submitJobs.py --MEM 3000 --jobname bamCoverageToBigWig \
+    --command "~/src/utils/coverage/bam2bigwig.py --genome GRCh38.genome.txt --indir . --split"
 
 # Use verifyBamID to ensure that the files match the expected HIPSCI sample
 KOLF2_VCF=$SEQ/genotypes/kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.vcf.gz

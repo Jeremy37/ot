@@ -3,8 +3,12 @@ library(readr)
 library(dplyr)
 library(magrittr)
 
-#root = "/lustre/scratch115/realdata/mdt3/projects/otcoregen/jeremys"
-root = "/Users/jeremys/work/opentargets"
+args <- commandArgs(trailingOnly = TRUE)
+basedir = args[1]
+outname = args[2]
+
+root = "/lustre/scratch115/realdata/mdt3/projects/otcoregen/jeremys"
+#root = "/Users/jeremys/work/opentargets"
 
 # Read the metadata file for JEME Roadmap samples
 roadmap.meta = readr::read_csv(file.path(root, "annotation/JEME/roadmap.description.csv"))
@@ -12,7 +16,7 @@ roadmap.meta = readr::read_csv(file.path(root, "annotation/JEME/roadmap.descript
 # We read in each file of enhancer-promoter connections and scores which overlapped
 # with a SNP in our set. We'll store a data.frame for the associated gene scores.
 
-files <- list.files(path=file.path(root, "gwas/AD/JEME/roadmap"), pattern="*.txt", full.names=T, recursive=FALSE)
+files <- list.files(path=file.path(root, basedir, "JEME/roadmap"), pattern="*.txt", full.names=T, recursive=FALSE)
 #files = files[1:30]
 numFiles = length(files)
 
@@ -22,6 +26,9 @@ lapply(files, function(fname) {
   EID = roadmap.meta[match(id, roadmap.meta$id), ]$sampleName
   eid.df <- readr::read_tsv(fname, col_names = c("chr", "pos", "gene", "score"))
   eid.df$key = paste(eid.df$chr, eid.df$pos, eid.df$gene, sep="_")
+  # Important when full_joining multiple tables that you don't have duplicate
+  # values, otherwise these combinations grown exponentially
+  eid.df = eid.df[!duplicated(eid.df$key),]
   eid.df2 = eid.df %>% dplyr::rename(!!EID := "score") %>% dplyr::select(-chr, -pos, -gene)
   linkscore.df <<- linkscore.df %>% dplyr::full_join(eid.df2, by="key")
 })
@@ -70,9 +77,12 @@ for (i in 1:nrow(snplinks.df)) {
 }
 
 
-write.table(snplinks.df, file=file.path(root, "gwas/AD/JEME/toby.jimmy.finemap.merged.JEME.txt"), sep="\t", quote=F, col.names=T, row.names=F)
+write.table(snplinks.df, file=file.path(root, basedir, "JEME", paste0(outname, ".JEME.txt")),
+            sep="\t", quote=F, col.names=T, row.names=F)
 
-finemap.df = readr::read_tsv(file.path(root, "gwas/AD/toby.jimmy.finemap.merged.annotated.txt"))
+snplinks.df = readr::read_tsv(file.path(root, basedir, "JEME", paste0(outname, ".JEME.txt")))
+  
+finemap.df = readr::read_tsv(file.path(root, basedir, paste0(outname, ".txt")))
 finemap.df$chrpos = paste(finemap.df$Chr, finemap.df$pos, sep="_")
 
 snplinks.df$chr = gsub("chr", "", snplinks.df$chr)
@@ -82,8 +92,8 @@ finemap.df.new = finemap.df %>%
   dplyr::select(-chrpos)
 
 write.table(finemap.df.new,
-            file=file.path(root, "gwas/AD/toby.jimmy.finemap.annotated.roadmapEnhPromLinks.txt"),
-            sep="\t", quote=F, col.names=T, row.names=F)
+            file=file.path(root, basedir, "JEME", paste0(outname, ".roadmapEnhPromLinks.txt")),
+            sep="\t", quote=F, col.names=T, row.names=F, na = "")
 
 #fantom.meta = readr::read_csv("/lustre/scratch115/realdata/mdt3/projects/otcoregen/jeremys/annotation/JEME/fantom5.description.csv")
 
