@@ -4,12 +4,12 @@ library(dplyr)
 library(magrittr)
 options(stringsAsFactors = F)
 
-#root = "/lustre/scratch115/realdata/mdt3/projects/otcoregen/jeremys"
-root = "/Users/jeremys/work/opentargets"
+root = "/lustre/scratch115/realdata/mdt3/projects/otcoregen/jeremys"
+#root = "/Users/jeremys/work/opentargets"
 
 # prefix = "coloc.AD.meta"
-# outputroot = file.path(root, "gwas", "AD", "toby.jimmy.finemap.annotated")
-# annotated_gwas = file.path(root, "gwas", "AD", "toby.jimmy.finemap.annotated.roadmapEnhPromLinks.txt")
+# outputroot = file.path(root, "gwas", "AD", "AD.finemap.annotated")
+# annotated_gwas = file.path(root, "gwas", "AD", "AD.finemap.annotated.roadmapEnhPromLinks.txt")
 # output_file = paste0(outputroot, ".colocs.txt")
 
 prefix = "coloc.PD.meta"
@@ -88,7 +88,7 @@ coloc.sensneur.eqtl.df %<>% dplyr::left_join(ensemblMap, by=c("phenotype_id" = "
 
 # For sensory neuron sQTLs, get "gene symbol" to use from the original lead SNP file
 coloc.sensneur.sqtl.df = readr::read_tsv(file.path(root, "coloc", "sensoryneuron", paste0(prefix, ".sens_neur.sqtl.1e+05.txt")))
-sensneurLeadSQTL.df = readr::read_tsv(file.path(root, "sensoryneurons", "GRCh38", "fastqtl.sqtl.permutations.10k.PCs.5.fdr0.1.txt"))
+sensneurLeadSQTL.df = readr::read_tsv(file.path(root, "sensoryneurons", "GRCh38", "sqtl", "fastqtl.sqtl.permutations.10k.PCs.5.fdr0.1.txt"))
 geneSummary = function(i) {
   if (grepl("[A-Za-z]", sensneurLeadSQTL.df[i,]$symbols)) {
     return(sensneurLeadSQTL.df[i,]$symbols)
@@ -200,8 +200,8 @@ annotated.df %<>% dplyr::left_join(topColocs.df, by=c("snp" = "gwas_lead")) %>%
 
 # Write out the full table, with the top colocs annotated only in the rows of GWAS
 # lead SNPs
-write.table(annotated.df %>% dplyr::select(-gwas_lead) %>%
-              dplyr::arrange(Chr, locus, finemap.p), file=output_file,
+write.table(annotated.df %>% dplyr::select(-gwas_lead) %>% dplyr::arrange(Chr, locus, finemap.p),
+            file=output_file,
             sep="\t", row.names=F, col.names=T, quote=F, na="")
 
 

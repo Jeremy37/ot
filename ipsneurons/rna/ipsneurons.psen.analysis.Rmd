@@ -1,0 +1,605 @@
+# RNA-seq in PSEN-mutant vs. WT iPSC-derived NPCs
+
+Here we compare the RNA-seq Kolf2 WT NPCs to that from a PSEN-mutant line (splice donor mutation rs63751475, G=>del) produced from Kolf2 iPSCs and differentiated to NPCs.
+
+```{r Setup, message=FALSE, warning=FALSE, echo=FALSE}
+library(dplyr)
+library(readr)
+library(magrittr)
+library(ggplot2)
+library(pheatmap)
+library(pcaMethods)
+library(DESeq2)
+library(gProfileR)
+
+root = "/Users/jeremys/work/opentargets"
+outputPath = "/Users/jeremys/work/opentargets/ipsneurons/GRCh38/RNA/analysis"
+#setwd("/Users/jeremys/work/opentargets/ipsneurons/src/rna/")
+counts.fname = file.path(outputPath, "ipsneurons.all.counts.txt.gz")
+txRefPath = file.path(root, "reference/GRCh38/Homo_sapiens.GRCh38.89.transcript_data.rds")
+
+saveFiles = T
+
+source(file.path(root, "src/R/clustering.R"))
+```
+
+```{r LoadCounts, warning=FALSE, message=FALSE, echo=FALSE}
+readtsv = function(fname, ...) { readr::read_tsv(fname, ...) %>% as.data.frame() }
+
+sample.meta = readr::read_tsv(file.path(root, "ipsneurons/GRCh38/RNA/meta/ipsneurons.rna.metadata.txt"))
+sample.meta$sampleID = tolower(sample.meta$sampleID)
+sample.meta$day = as.factor(sample.meta$day)
+
+readCounts = function(fname) {
+  counts = readtsv(fname)
+  # Fix gene names to remove the version number (e.g. ".4" in ENSG00000223972.4)
+  gene_ids <- gsub("\\.[\\d]+", "", counts[,1], perl=T)
+  counts[,1] = gene_ids
+  rownames(counts) = gene_ids
+  counts
+}
+
+counts = readCounts(counts.fname)
+gene.meta = counts[,c(1,2)]
+counts = counts[, -c(1,2)]
+colnames(counts) = tolower(colnames(counts))
+rownames(counts) = gene.meta$gene_id
+
+readCounts.df = data.frame(readCount = colSums(counts), sampleID = colnames(counts))
+sample.meta = sample.meta %>% dplyr::inner_join(readCounts.df, by="sampleID")
+rownames(sample.meta) = sample.meta$sampleID
+
+coldata = data.frame(sampleID = colnames(counts))
+dds = DESeqDataSetFromMatrix(counts, coldata, ~0)
+colnames(dds) = colnames(counts)
+vst = varianceStabilizingTransformation(dds)
+dds = estimateSizeFactors(dds)
+#View(assay(vst))
+counts.deseq = counts(dds, normalized=T)
+colnames(counts.deseq) = colnames(counts)
+
+rpm = apply(counts.deseq, MARGIN=2, FUN=function(x) x / sum(x)) * 1e6
+rpkm = rpm * 1e3
+rpkm = apply(rpkm, MARGIN=2, FUN=function(x) x / gene.meta$length)
+geneMedianRpkm = apply(rpkm, MARGIN=1, FUN=median)
+geneMeanRpkm = apply(rpkm, MARGIN=1, FUN=mean)
+expressedGenes = names(geneMeanRpkm[geneMeanRpkm >= 1])
+
+print(paste("Number of genes with median expression RPKM >= 1:", length(expressedGenes)))
+vst.vals.x = assay(vst)[expressedGenes,]
+
+rpkm.df = cbind(data.frame(gene_id = rownames(rpkm)), rpkm)
+rpkm.mat = as.matrix(rpkm.df[,-1])
+
+txdb = readRDS(file.path(root, "reference/GRCh38/Homo_sapiens.GRCh38.89.transcript_data.rds"))
+genedb = txdb %>% dplyr::select(ensembl_gene_id, external_gene_name, gene_biotype) %>% 
+  unique() %>% dplyr::rename("gene_id" = "ensembl_gene_id", "gene_name" = "external_gene_name")
+
+rpkm.avgs.df = data.frame(gene_id = rownames(rpkm.mat),
+                          median.rpkm = rowMedians(rpkm.mat),
+                          mean.rpkm = rowMeans(rpkm.mat),
+                          sd.rpkm = rowSds(rpkm.mat),
+                          mean.rpm = rowMeans(rpm))
+
+rpkm.avgs.df = rpkm.avgs.df %>% dplyr::left_join(genedb, by="gene_id") %>%
+  dplyr::select(gene_id, gene_name, gene_biotype, median.rpkm, mean.rpkm, sd.rpkm, mean.rpm) %>%
+  arrange(-median.rpkm)
+
+if (saveFiles) {
+  gzf = gzfile(file.path(outputPath, "ipsneurons.fpkm.txt.gz"), "w")
+  write.table(rpkm.df, file=gzf, col.names=T, row.names=F, quote=F, sep="\t")
+  close(gzf)
+  
+  write.table(rpkm.avgs.df, file=file.path(outputPath, "ipsneurons.fpkm.averages.txt"), col.names=T, row.names=F, quote=F, sep="\t")
+}
+```
+
+## PCA - all samples
+
+Explore PCs for expressed genes across all iPSC-derived samples. Note that the new NPC samples are named Kolf2WT_NPC_1/2, and the old are named Kolf2_NPC1/2/3. In the PCA, the new WT NPC samples are labelled with "NPC_B". (In all PCAs below I included only "expressed" genes, where these were determined as those with mean RPKM of expression > 1. Therefore, the set of expressed genes differs slightly when considering only NPCs rather than all samples.)
+
+Interestingly, both PSEN-mutant and WT NPCs from the latest batch cluster closely together, so the batch differences between these samples and the previous samples are larger than the effect of the PSEN mutation. PC1 explains most of the variance and distinguishes iNeurons from NPCs and growth factor-differentiated neurons. PC2 distinguishes GF-diff neurons from NPCs and iNeurons.
+
+```{r PCA.x.allsamples, warning=FALSE, message=FALSE, echo=FALSE}
+pca.result = pcaMethods::pca(t(vst.vals.x), nPcs = 5)
+pcs = data.frame(scores(pca.result))
+pcs$sampleID = rownames(pcs)
+pcs.meta = dplyr::left_join(pcs, sample.meta, by="sampleID")
+
+vst.vals.tmp = vst.vals.x
+sampleNames = sample.meta$Sample_name
+names(sampleNames) = sample.meta$sampleID
+colnames(vst.vals.tmp) = sampleNames[colnames(vst.vals.x)]
+cor.pearson = cor(vst.vals.tmp)
+pheatmap(cor.pearson, main="Heatmap of gene expression correlations", fontsize=8)
+
+PCnames = factor(names(pca.result@R2), levels=c("PC1", "PC2", "PC3", "PC4", "PC5"))
+ggplot(data.frame(R2=pca.result@R2, PC=PCnames), aes(x=PC, y=R2)) +
+  geom_bar(stat="identity") + ggtitle("Variance explained by RNA-seq PCs") + theme_bw()
+
+ggplot(pcs.meta, aes(x=PC1, y=PC2, col=celltype2)) + geom_text(aes(label = Sample_name), size=3) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC1, y=PC3, col=celltype2)) + geom_text(aes(label = Sample_name), size=3) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC2, y=PC3, col=celltype2)) + geom_text(aes(label = Sample_name), size=3) + theme_bw(12)
+```
+
+From these PCA plots we can also see that the BOB iNeurons grown on Vitronectin cluster very near the other iNeuron samples on PCs 1 and 2, though they separate in PC3. However, PC3 explains a fairly small fraction of the gene expression variation across all of these samples.
+
+## PCA - WT vs PSEN mutant NPCs
+
+The below PCA looking only at NPCs doesn't seem to be very informative. Most of the variation is among the previously sequenced NPCs, with less variability in the new set (both PSEN mutant and WT).
+
+```{r PCA.x.npc, warning=FALSE, message=FALSE, echo=FALSE}
+sample.meta.npc = sample.meta %>% filter(celltype %in% c("NPC", "NPC_PSEN"), sampleID %in% colnames(vst.vals.x)) %>% as.data.frame()
+rownames(sample.meta.npc) = sample.meta.npc$sampleID
+
+rpkm.npc = rpkm[, sample.meta.npc$sampleID]
+npc.avgs.df = data.frame(gene_id = rownames(rpkm.npc),
+                          median.rpkm = rowMedians(rpkm.npc),
+                          mean.rpkm = rowMeans(rpkm.npc),
+                          sd.rpkm = rowSds(rpkm.npc))
+
+expressedGenes.npc = npc.avgs.df %>% filter(mean.rpkm >= 0.5) %>% .$gene_id %>% as.character()
+vst.npc = assay(vst)[expressedGenes.npc, sample.meta.npc$sampleID]
+
+pca.result = pcaMethods::pca(t(vst.npc), nPcs = 5)
+pcs = data.frame(scores(pca.result))
+pcs$sampleID = rownames(pcs)
+pcs.meta = dplyr::left_join(pcs, sample.meta, by="sampleID")
+
+PCnames = factor(names(pca.result@R2), levels=c("PC1", "PC2", "PC3", "PC4", "PC5"))
+ggplot(data.frame(R2=pca.result@R2, PC=PCnames), aes(x=PC, y=R2)) +
+  geom_bar(stat="identity") + ggtitle("Variance explained by RNA-seq PCs") + theme_bw()
+
+ggplot(pcs.meta, aes(x=PC1, y=PC2, col=celltype2)) + geom_text(aes(label = Sample_name), size=3) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC1, y=PC3, col=celltype2)) + geom_text(aes(label = Sample_name), size=3) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC2, y=PC3, col=celltype2)) + geom_text(aes(label = Sample_name), size=3) + theme_bw(12)
+
+library(GOsummaries)
+#pca = prcomp(t(vst.npc))
+
+# Plot showing GO categories enriched in PC1
+#gs_pca = gosummaries(pca, components=1:3)
+#plot(gs_pca, components = 1:3, fontsize = 10)
+
+# Plot showing genes
+#gs_pca = gosummaries(pca, show_genes = T, n_genes = 40, components=1:3)
+#plot(gs_pca, components = 1:3, fontsize = 10)
+
+# Save the PC loadings to file. Add gene names and expression levels to this.
+npc.expression = rpkm.df %>% dplyr::select(sample.meta.npc$sampleID) %>%
+  dplyr::mutate(gene_id = rownames(rpkm.df))
+colnames(npc.expression)[1:7] = paste0(sample.meta.npc[colnames(npc.expression)[1:7],]$Sample_name, "_RPKM")
+
+pcaLoadings = as.data.frame(pca.result@loadings) %>%
+  dplyr::mutate(gene_id = rownames(pca.result@loadings)) %>%
+  dplyr::left_join(npc.expression) %>%
+  dplyr::left_join(genedb) %>%
+  dplyr::select(gene_id, gene_name, gene_biotype, PC1, PC2, PC3, everything()) %>%
+  dplyr::arrange(-PC1)
+
+if (saveFiles) {
+  write.table(pcaLoadings, file=file.path(outputPath, "ipsneurons.psen_vs_wt.allnpc.pca.PC_loadings.txt"), col.names=T, row.names=F, quote=F, sep="\t")
+}
+```
+
+## Genes differentially expressed between PSEN-mut vs WT NPCs
+
+Here we look at DE genes between PSEN-mutant NPCs and all previous WT NPC samples (2 in the same batch + 3 from fall 2017), considering only genes with mean expression > 0.5 RPKM.
+In this comparison only 69 genes are differentially expressed at 5% FDR. (I would keep in mind that with only 2 technical replicates, probably more than 5% of these will be false positives, genes that happen to have been close together in each pair of samples by chance.) Positive logFoldChange means higher in PSEN-mutant.
+
+```{r Diffexp.PSEN_vs_WT_NPCs, warning=FALSE, message=FALSE, echo=FALSE}
+counts.npc = counts[as.character(expressedGenes.npc), sample.meta.npc$sampleID]
+#counts.npc = counts.npc[rowMeans(counts.npc) > 0,]
+dds = DESeqDataSetFromMatrix(counts.npc, sample.meta.npc, ~celltype)
+colnames(dds) = colnames(counts.npc)
+vst = varianceStabilizingTransformation(dds)
+dds = estimateSizeFactors(dds)
+dds = DESeq(dds, parallel=T)
+
+deseq.result = results(dds)
+#par(mai=c(1.2,1.2,1,1))
+#plotMA(deseq.result, main="DESeq2 - PSEN-mutant NPC vs WT", ylim=c(-8, 8))
+
+deseq.res.df = deseq.result %>% as.data.frame()
+deseq.res.df$fc = 2^(abs(deseq.res.df$log2FoldChange)) * sign(deseq.res.df$log2FoldChange)
+deseq.res.df$gene_id = rownames(deseq.res.df)
+deseq.res.df %<>% left_join(genedb, by = "gene_id") %>% arrange(padj)
+deseq.res.df %<>% left_join(npc.avgs.df, by = "gene_id")
+#deseq.res.df %<>% inner_join(rpkm.avgs.df, by = "gene_id") %>% arrange(padj)
+#sum(deseq.res.df$padj < 0.05, na.rm=T)
+# Genes with positive fold change are higher in classical neurons
+
+if (saveFiles) {
+  gzf = gzfile(file.path(outputPath, "deseq.PSEN_NPC.vs.WT.txt.gz"), "w")
+  write.table(deseq.res.df, file=gzf, col.names=T, row.names=F, quote=F, sep="\t")
+  close(gzf)
+}
+
+plotDE = function(deseq.res.df, title, sigThreshold=0.01, xlim=NULL, ylim=NULL, maxLabels=100, labelSize=2.2) {
+  p = ggplot(deseq.res.df %>% mutate(sig=(padj < sigThreshold)), aes(x=baseMean, y=log2FoldChange, col=sig)) +
+    geom_point(size=0.5) +
+    scale_color_manual(values=c("black", "red", "dodgerblue")) +
+    theme_bw(14) +
+    scale_x_log10() + xlab("DESeq2 baseMean expression") +
+    theme(legend.position="none") +
+    ggtitle(title)
+  
+  # Determine the points to label by fitting a spline to the points and
+  # adjusting it until we get the desired number of points beyond the line
+  deseq.res.sig = deseq.res.df %>% filter(padj < sigThreshold) %>%
+    arrange(baseMean)
+  deseq.res.sig.neg = deseq.res.sig %>% filter(log2FoldChange < 0)
+  deseq.res.sig.pos = deseq.res.sig %>% filter(log2FoldChange > 0)
+  fit.neg <- smooth.spline(log10(deseq.res.sig.neg$baseMean), deseq.res.sig.neg$log2FoldChange, df=7)
+  fit.pos <- smooth.spline(log10(deseq.res.sig.pos$baseMean), deseq.res.sig.pos$log2FoldChange, df=7)
+
+  if (nrow(deseq.res.sig) <= maxLabels) {
+    deseq.res.sig.plot = deseq.res.sig
+  } else {
+    # Fit splines to the significant genes, and adjust these to get the
+    # desired number of points labelled
+    factor = 0.9
+    offset = -0.2
+    numlabels = sum(deseq.res.sig.pos$log2FoldChange > (predict(fit.pos, log10(deseq.res.sig.pos$baseMean))$y * factor + offset)) +
+                sum(deseq.res.sig.neg$log2FoldChange < (predict(fit.neg, log10(deseq.res.sig.neg$baseMean))$y * factor - offset))
+    while (numlabels > maxLabels) {
+      offset = offset + 0.1
+      factor = factor * 1.04
+      numlabels = sum(deseq.res.sig.pos$log2FoldChange > (predict(fit.pos, log10(deseq.res.sig.pos$baseMean))$y * factor + offset)) +
+                  sum(deseq.res.sig.neg$log2FoldChange < (predict(fit.neg, log10(deseq.res.sig.neg$baseMean))$y * factor - offset))
+    }
+    deseq.res.sig.plot = rbind(deseq.res.sig.pos[deseq.res.sig.pos$log2FoldChange > (predict(fit.pos, log10(deseq.res.sig.pos$baseMean))$y * factor + offset),],
+                               deseq.res.sig.neg[deseq.res.sig.neg$log2FoldChange < (predict(fit.neg, log10(deseq.res.sig.neg$baseMean))$y * factor - offset),])
+  }
+  p = p + annotate(geom="text", x=deseq.res.sig.plot$baseMean, y=deseq.res.sig.plot$log2FoldChange,
+                   label=deseq.res.sig.plot$gene_name, col="blue", hjust = -0.2, size=labelSize) 
+  #p = p + geom_line(aes(10^x, y*factor - offset), data=as.data.frame(fit.neg[c("x","y")]), col="grey90") +
+  #  geom_line(aes(10^x, y*factor + offset), data=as.data.frame(fit.pos[c("x","y")]), col="grey90")
+  if (!is.null(xlim) | !is.null(ylim)) {
+    p = p + coord_cartesian(xlim=xlim, ylim=ylim)
+  }
+  return(p)
+}
+
+deseq.res.df = deseq.res.df %>% dplyr::filter(abs(log2FoldChange) < 10)
+p1 = plotDE(deseq.res.df, "DESeq2 - PSEN-mutant NPC vs WT", sigThreshold=0.05, xlim = c(1e1, 1e5), maxLabels = 100)
+# Zoomed in view
+p2 = plotDE(deseq.res.df, "DESeq2 - PSEN-mutant NPC vs WT (zoom)", sigThreshold=0.05, xlim = c(1e1, 1e5), ylim = c(-3,2), maxLabels = 200)
+
+print(p1)
+print(p2)
+
+if (saveFiles) {
+  pdf(file.path(outputPath, "deseq.PSEN_NPC.vs.WT.pdf"), width=7, height=6)
+  print(p1)
+  print(p2)
+  dev.off()
+  write.table(deseq.res.df %>% filter(padj < 0.05) %>% arrange(padj),
+              file=file.path(outputPath, "deseq.PSEN_NPC.vs.WT.significant.txt"),
+              col.names=T, row.names=F, quote=F, sep="\t")
+}
+```
+
+
+```{r Diffexp.PSEN_vs_WT_NPCs.enrichment, warning=FALSE, message=FALSE, echo=FALSE}
+deseq.pathwayEnrich = deseq.res.df %>%
+  filter(padj < 0.05, mean.rpkm > 0.5) %>%
+  dplyr::select(gene_id, log2FoldChange) %>%
+  arrange(-log2FoldChange)
+
+deseq.res.expressed = deseq.res.df %>%
+  arrange(-mean.rpkm) %>%
+  filter(mean.rpkm > 0.5) %>%
+  dplyr::select(gene_id)
+
+if (saveFiles) {
+  write.table(deseq.pathwayEnrich, file.path(outputPath, "deseq.PSEN_NPC.vs.WT.forPathwayEnrichment.txt"), col.names=F, row.names=F, quote=F, sep="\t")
+  write.table(deseq.res.expressed, file.path(outputPath, "deseq.PSEN_NPC.vs.WT.expressedGenes.txt"), col.names=F, row.names=F, quote=F, sep="\t")
+}
+```
+
+## PCA - WT vs PSEN mutant NPCs (batch2 only)
+
+Now we look at a PCA considering only the batch2 NPC samples. We also look at GO categories and genes enriched at either end of PC1, which explains most of the expression variation. Items at the left are enriched in WT NPCs while those on the right are enriched in PSEN-mut NPCs.
+
+```{r PCA.x.npc.2, warning=FALSE, message=FALSE, echo=FALSE}
+sample.meta.npc = sample.meta %>% filter(celltype2 %in% c("NPC_B", "NPC_PSEN"), sampleID %in% colnames(vst.vals.x)) %>% as.data.frame()
+rownames(sample.meta.npc) = sample.meta.npc$sampleID
+
+rpkm.npc = rpkm[, sample.meta.npc$sampleID]
+npc.avgs.df = data.frame(gene_id = rownames(rpkm.npc),
+                          median.rpkm = rowMedians(rpkm.npc),
+                          mean.rpkm = rowMeans(rpkm.npc),
+                          sd.rpkm = rowSds(rpkm.npc))
+expressedGenes.npc = npc.avgs.df %>% filter(mean.rpkm >= 1) %>% .$gene_id %>% as.character()
+vst.npc = assay(vst)[expressedGenes.npc, sample.meta.npc$sampleID]
+
+pca.result = pcaMethods::pca(t(vst.npc), nPcs = 3)
+pcs = data.frame(scores(pca.result))
+pcs$sampleID = rownames(pcs)
+pcs.meta = dplyr::left_join(pcs, sample.meta, by="sampleID")
+
+PCnames = factor(names(pca.result@R2), levels=c("PC1", "PC2", "PC3", "PC4", "PC5"))
+ggplot(data.frame(R2=pca.result@R2, PC=PCnames), aes(x=PC, y=R2)) +
+  geom_bar(stat="identity") + ggtitle("Variance explained by RNA-seq PCs") + theme_bw()
+
+ggplot(pcs.meta, aes(x=PC1, y=PC2, col=celltype2)) + geom_text(aes(label = Sample_name), size=3) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC1, y=PC3, col=celltype2)) + geom_text(aes(label = Sample_name), size=3) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC2, y=PC3, col=celltype2)) + geom_text(aes(label = Sample_name), size=3) + theme_bw(12)
+
+# Plot showing GO categories enriched in PC1
+pca = prcomp(t(vst.npc))
+gs_pca = gosummaries(pca, components=1:3)
+plot(gs_pca, components = 1, fontsize = 9)
+
+# Plot showing genes
+gs_pca = gosummaries(pca, show_genes = T, n_genes = 100, components=1:3)
+plot(gs_pca, components = 1, fontsize = 9)
+
+# Save the PC loadings to file. Add gene names and expression levels to this.
+npc.expression = rpkm.df %>% dplyr::select(sample.meta.npc$sampleID) %>%
+  dplyr::mutate(gene_id = rownames(rpkm.df))
+colnames(npc.expression)[1:4] = paste0(sample.meta.npc[colnames(npc.expression)[1:4],]$Sample_name, "_RPKM")
+
+pcaLoadings = as.data.frame(pca.result@loadings) %>%
+  dplyr::mutate(gene_id = rownames(pca.result@loadings)) %>%
+  dplyr::left_join(npc.expression) %>%
+  dplyr::left_join(genedb) %>%
+  dplyr::select(gene_id, gene_name, gene_biotype, PC1, PC2, PC3, everything()) %>%
+  dplyr::arrange(-PC1)
+
+if (saveFiles) {
+  write.table(pcaLoadings, file=file.path(outputPath, "ipsneurons.psen_vs_wt.batch2.pca.PC_loadings.txt"), col.names=T, row.names=F, quote=F, sep="\t")
+}
+
+```
+
+Next we look at DE genes between the PSEN-mutant NPCs and just the 2 NPC samples in the same batch.
+
+## Genes differentially expressed between PSEN-mut vs WT NPCs (batch2 only)
+
+Now we find 1500 genes differentially expressed at 1% FDR, considering only genes expressed > 0.5 RPKM. Positive fold change relates to genes expressed more highly in PSEN-mutant NPCs.
+
+```{r Diffexp.PSEN_vs_WT_NPCs.2, warning=FALSE, message=FALSE, echo=FALSE}
+#sample.meta.npc.batch2 = sample.meta.npc %>% dplyr::filter(celltype2 %in% c("NPC_B", "NPC_PSEN"))
+counts.npc = counts[as.character(expressedGenes.npc), sample.meta.npc$sampleID]
+#counts.npc = counts.npc[rowMeans(counts.npc) > 0,]
+dds = DESeqDataSetFromMatrix(counts.npc, sample.meta.npc, ~celltype)
+colnames(dds) = colnames(counts.npc)
+vst = varianceStabilizingTransformation(dds)
+dds = estimateSizeFactors(dds)
+dds = DESeq(dds, parallel=T)
+
+deseq.result = results(dds)
+#par(mai=c(1.2,1.2,1,1))
+#plotMA(deseq.result, main="DESeq2 - PSEN-mutant NPC vs WT", ylim=c(-8, 8))
+
+deseq.res.df = deseq.result %>% as.data.frame()
+deseq.res.df$fc = 2^(abs(deseq.res.df$log2FoldChange)) * sign(deseq.res.df$log2FoldChange)
+deseq.res.df$gene_id = rownames(deseq.res.df)
+deseq.res.df %<>% left_join(genedb, by = "gene_id") %>% arrange(padj)
+deseq.res.df %<>% left_join(npc.avgs.df, by = "gene_id")
+#deseq.res.df %<>% inner_join(rpkm.avgs.df, by = "gene_id") %>% arrange(padj)
+#sum(deseq.res.df$padj < 0.01, na.rm=T)
+# Genes with positive fold change are higher in classical neurons
+
+if (saveFiles) {
+  gzf = gzfile(file.path(outputPath, "deseq.PSEN_NPC.vs.WT.batch2.txt.gz"), "w")
+  write.table(deseq.res.df, file=gzf, col.names=T, row.names=F, quote=F, sep="\t")
+  close(gzf)
+}
+
+p1 = plotDE(deseq.res.df, "DESeq2 - PSEN-mutant NPC vs WT (batch2 only)", xlim=c(5e1, 1e5), maxLabels = 100, labelSize=2)
+# Zoomed in view
+p2 = plotDE(deseq.res.df, "DESeq2 - PSEN-mutant NPC vs WT (batch2 only, zoom)", xlim=c(5e1, 5e4), ylim=c(-3.5, 3.5), maxLabels = 160, labelSize=2)
+print(p1)
+print(p2)
+
+if (saveFiles) {
+  pdf(file.path(outputPath, "deseq.PSEN_NPC.vs.WT.batch2.pdf"), width=7, height=6)
+  print(p1)
+  print(p2)
+  dev.off()
+  write.table(deseq.res.df %>% filter(padj < 0.05) %>% arrange(padj),
+              file=file.path(outputPath, "deseq.PSEN_NPC.vs.WT.batch2.significant.txt"),
+              col.names=T, row.names=F, quote=F, sep="\t")
+}
+
+```
+
+```{r Diffexp.PSEN_vs_WT_NPCs.batch2.enrichment, warning=FALSE, message=FALSE, echo=FALSE}
+deseq.pathwayEnrich = deseq.res.df %>%
+  filter(padj < 0.05, mean.rpkm > 0.5) %>%
+  dplyr::select(gene_id, log2FoldChange) %>%
+  arrange(-log2FoldChange)
+
+deseq.pathwayEnrich.top1k = deseq.res.df %>%
+  filter(padj < 0.05, mean.rpkm > 0.5) %>%
+  arrange(padj) %>% filter(between(row_number(), 1, 1000)) %>%
+  dplyr::select(gene_id, log2FoldChange) %>%
+  arrange(-log2FoldChange)
+
+deseq.res.expressed = deseq.res.df %>%
+  arrange(-mean.rpkm) %>%
+  filter(mean.rpkm > 0.5) %>%
+  dplyr::select(gene_id)
+
+if (saveFiles) {
+  write.table(deseq.pathwayEnrich, file.path(outputPath, "deseq.PSEN_NPC.vs.WT.batch2.forPathwayEnrichment.txt"), col.names=F, row.names=F, quote=F, sep="\t")
+  write.table(deseq.pathwayEnrich.top1k, file.path(outputPath, "deseq.PSEN_NPC.vs.WT.batch2.top1k.forPathwayEnrichment.txt"), col.names=F, row.names=F, quote=F, sep="\t")
+  write.table(deseq.res.expressed, file.path(outputPath, "deseq.PSEN_NPC.vs.WT.batch2.expressedGenes.txt"), col.names=F, row.names=F, quote=F, sep="\t")
+
+  # Use gProfileR to get enrichments
+  gp = gprofiler(query = (deseq.res.df %>% filter(padj < 0.05) %>% arrange(padj) %>% filter(log2FoldChange > 0) %>% filter(between(row_number(), 1, 1000)) %>% .$gene_id),
+                 custom_bg = (deseq.res.expressed %>% .$gene_id),
+                 organism = "hsapiens")
+  write.table(gp %>% filter(domain != "tf") %>% arrange(domain, p.value),
+              file.path(outputPath, "deseq.PSEN_NPC.vs.WT.gprofiler_enrich.PSEN_upregulated_genes.txt"), col.names=T, row.names=F, quote=F, sep="\t")
+
+  gp = gprofiler(query = (deseq.res.df %>% filter(padj < 0.05) %>% arrange(padj) %>% filter(log2FoldChange < 0) %>% filter(between(row_number(), 1, 1000)) %>% .$gene_id),
+                 custom_bg = (deseq.res.expressed %>% .$gene_id),
+                 organism = "hsapiens")
+  write.table(gp %>% filter(domain != "tf") %>% arrange(domain, p.value),
+              file.path(outputPath, "deseq.PSEN_NPC.vs.WT.gprofiler_enrich.PSEN_downregulated_genes.txt"), col.names=T, row.names=F, quote=F, sep="\t")
+}
+```
+
+
+## PCA of iNeurons grown on Vitronectin or Geltrex
+
+```{r PCA.x.ineuron, warning=FALSE, message=FALSE, echo=FALSE}
+sample.meta.ineuron = sample.meta %>% filter(celltype %in% c("iNeuron"), sampleID %in% colnames(vst.vals.x)) %>% as.data.frame()
+rownames(sample.meta.ineuron) = sample.meta.ineuron$sampleID
+
+rpkm.ineuron = rpkm[, sample.meta.ineuron$sampleID]
+ineuron.avgs.df = data.frame(gene_id = rownames(rpkm.ineuron),
+                          median.rpkm = rowMedians(rpkm.ineuron),
+                          mean.rpkm = rowMeans(rpkm.ineuron),
+                          sd.rpkm = rowSds(rpkm.ineuron))
+expressedGenes.ineuron = ineuron.avgs.df %>% filter(mean.rpkm >= 1) %>% .$gene_id %>% as.character()
+counts.ineuron = counts[expressedGenes.ineuron,sample.meta.ineuron$sampleID]
+
+dds = DESeqDataSetFromMatrix(counts.ineuron, sample.meta.ineuron, ~condition)
+colnames(dds) = colnames(counts.ineuron)
+vst = varianceStabilizingTransformation(dds)
+dds = estimateSizeFactors(dds)
+
+vst.ineuron = assay(vst)[expressedGenes.ineuron, sample.meta.ineuron$sampleID]
+
+pca.result = pcaMethods::pca(t(vst.ineuron), nPcs = 5)
+pcs = data.frame(scores(pca.result))
+pcs$sampleID = rownames(pcs)
+pcs.meta = dplyr::left_join(pcs, sample.meta, by="sampleID")
+
+PCnames = factor(names(pca.result@R2), levels=c("PC1", "PC2", "PC3", "PC4", "PC5"))
+ggplot(data.frame(R2=pca.result@R2, PC=PCnames), aes(x=PC, y=R2)) +
+  geom_bar(stat="identity") + ggtitle("Variance explained by RNA-seq PCs") + theme_bw()
+
+ggplot(pcs.meta, aes(x=PC1, y=PC2, col=celltype2)) + geom_text(aes(label = Sample_name), size=3) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC1, y=PC3, col=celltype2)) + geom_text(aes(label = Sample_name), size=3) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC2, y=PC3, col=celltype2)) + geom_text(aes(label = Sample_name), size=3) + theme_bw(12)
+
+# Plot showing GO categories enriched in PC1
+pca = prcomp(t(vst.ineuron))
+gs_pca = gosummaries(pca, components=1:3)
+plot(gs_pca, components = 1, fontsize = 9)
+
+# Plot showing genes
+gs_pca = gosummaries(pca, show_genes = T, n_genes = 100, components=1:3)
+plot(gs_pca, components = 1, fontsize = 9)
+
+# Save the PC loadings to file. Add gene names and expression levels to this.
+ineuron.expression = rpkm.df %>% dplyr::select(sample.meta.ineuron$sampleID) %>%
+  dplyr::mutate(gene_id = rownames(rpkm.df))
+colnames(ineuron.expression)[1:9] = paste0(sample.meta.ineuron[colnames(ineuron.expression)[1:9],]$Sample_name, "_RPKM")
+
+pcaLoadings = as.data.frame(pca.result@loadings) %>%
+  dplyr::mutate(gene_id = rownames(pca.result@loadings)) %>%
+  dplyr::left_join(ineuron.expression) %>%
+  dplyr::left_join(genedb) %>%
+  dplyr::select(gene_id, gene_name, gene_biotype, PC1, PC2, PC3, everything()) %>%
+  dplyr::arrange(-PC1)
+
+if (saveFiles) {
+  write.table(pcaLoadings, file=file.path(outputPath, "iNeuron.Vit.vs.Geltrex.pca.PC_loadings.txt"), col.names=T, row.names=F, quote=F, sep="\t")
+}
+
+```
+
+## Genes differentially expressed between Vitronectin and Geltrex
+
+iNeurons grown on Vitronectin were harvested at day 10, and we're comparing these to iNeurons grown on Geltrex harvested at either day 9 or 11. Positive logFoldChange means higher on Vitronectin.
+
+```{r Diffexp.Vitronectin_vs_Geltrex, warning=FALSE, message=FALSE, echo=FALSE}
+sample.meta.ineuron = sample.meta %>% filter(celltype %in% c("iNeuron"), sampleID %in% colnames(vst.vals.x))
+
+rpkm.ineuron = rpkm[, sample.meta.ineuron$sampleID]
+ineuron.avgs.df = data.frame(gene_id = rownames(rpkm.ineuron),
+                          median.rpkm = rowMedians(rpkm.ineuron),
+                          mean.rpkm = rowMeans(rpkm.ineuron),
+                          sd.rpkm = rowSds(rpkm.ineuron))
+expressedGenes.ineuron = ineuron.avgs.df %>% filter(mean.rpkm >= 1) %>% .$gene_id %>% as.character()
+
+counts.ineuron = counts[expressedGenes.ineuron,sample.meta.ineuron$sampleID]
+#counts.ineuron = counts.ineuron[rowMeans(counts.ineuron) > 0,]
+
+dds = DESeqDataSetFromMatrix(counts.ineuron, sample.meta.ineuron, ~condition)
+colnames(dds) = colnames(counts.ineuron)
+vst = varianceStabilizingTransformation(dds)
+dds = estimateSizeFactors(dds)
+dds = DESeq(dds, parallel=T)
+
+deseq.result = results(dds)
+#par(mai=c(1.2,1.2,1,1))
+#plotMA(deseq.result, main="DESeq2 - iNeurons on Vitronectin vs. Geltrex", ylim=c(-8, 8))
+
+deseq.res.df = deseq.result %>% as.data.frame()
+deseq.res.df$fc = 2^(abs(deseq.res.df$log2FoldChange)) * sign(deseq.res.df$log2FoldChange)
+deseq.res.df$gene_id = rownames(deseq.res.df)
+deseq.res.df %<>% left_join(genedb, by = "gene_id") %>% arrange(padj)
+deseq.res.df %<>% inner_join(ineuron.avgs.df, by = "gene_id") %>% arrange(padj)
+#sum(deseq.res.df$padj < 0.05, na.rm=T)
+# Genes with positive fold change are higher in classical neurons
+
+if (saveFiles) {
+  gzf = gzfile(file.path(outputPath, "deseq.iNeuron.Vit.vs.Geltrex.txt.gz"), "w")
+  write.table(deseq.res.df, file=gzf, col.names=T, row.names=F, quote=F, sep="\t")
+  close(gzf)
+}
+
+deseq.res.df = deseq.res.df %>% dplyr::filter(abs(log2FoldChange) < 10)
+p1 = plotDE(deseq.res.df, "DESeq2 - iNeuron Vitronectin vs Geltrex", sigThreshold=0.05, xlim = c(1e1, 1e5), maxLabels = 80, labelSize = 2)
+# Zoomed in view
+p2 = plotDE(deseq.res.df, "DESeq2 - iNeuron Vitronectin vs Geltrex (zoom)", sigThreshold=0.05, xlim = c(1e1, 1e5), ylim = c(-2.5,3), maxLabels = 150, labelSize = 2)
+
+print(p1)
+print(p2)
+
+if (saveFiles) {
+  pdf(file.path(outputPath, "deseq.iNeuron.Vit.vs.Geltrex.pdf"), width=7, height=6)
+  print(p1)
+  print(p2)
+  dev.off()
+  write.table(deseq.res.df %>% filter(padj < 0.05) %>% arrange(padj),
+              file=file.path(outputPath, "deseq.iNeuron.Vit.vs.Geltrex.significant.txt"),
+              col.names=T, row.names=F, quote=F, sep="\t")
+}
+```
+
+
+```{r Diffexp.Vitronectin_vs_Geltrex.enrichment, warning=FALSE, message=FALSE, echo=FALSE}
+deseq.pathwayEnrich = deseq.res.df %>%
+  filter(padj < 0.05, mean.rpkm > 1) %>%
+  dplyr::select(gene_id, log2FoldChange) %>%
+  arrange(-log2FoldChange)
+
+deseq.pathwayEnrich.top1k = deseq.res.df %>%
+  filter(padj < 0.05, mean.rpkm > 1) %>%
+  arrange(padj) %>% filter(between(row_number(), 1, 1000)) %>%
+  dplyr::select(gene_id, log2FoldChange) %>%
+  arrange(-log2FoldChange)
+
+deseq.res.expressed = deseq.res.df %>%
+  arrange(-mean.rpkm) %>%
+  filter(mean.rpkm > 0.5) %>%
+  dplyr::select(gene_id)
+
+if (saveFiles) {
+  write.table(deseq.pathwayEnrich, file.path(outputPath, "deseq.Vitronectin_vs_Geltrex.forPathwayEnrichment.txt"), col.names=F, row.names=F, quote=F, sep="\t")
+  write.table(deseq.pathwayEnrich.top1k, file.path(outputPath, "deseq.Vitronectin_vs_Geltrex.top1k.forPathwayEnrichment.txt"), col.names=F, row.names=F, quote=F, sep="\t")
+  write.table(deseq.res.expressed$gene_id, file.path(outputPath, "deseq.Vitronectin_vs_Geltrex.expressedGenes.txt"), col.names=F, row.names=F, quote=F, sep="\t")
+  
+  # Use gProfileR to get enrichments
+  gp = gprofiler(query = (deseq.res.df %>% filter(padj < 0.05) %>% arrange(padj) %>% filter(log2FoldChange > 0) %>% filter(between(row_number(), 1, 1000)) %>% .$gene_id),
+                 custom_bg = (deseq.res.expressed %>% .$gene_id),
+                 organism = "hsapiens")
+  write.table(gp %>% filter(domain != "tf") %>% arrange(domain, p.value),
+              file.path(outputPath, "deseq.Vitronectin_vs_Geltrex.gprofiler_enrich.PSEN_upregulated_genes.txt"), col.names=T, row.names=F, quote=F, sep="\t")
+
+  gp = gprofiler(query = (deseq.res.df %>% filter(padj < 0.05) %>% arrange(padj) %>% filter(log2FoldChange < 0) %>% filter(between(row_number(), 1, 1000)) %>% .$gene_id),
+                 custom_bg = (deseq.res.expressed %>% .$gene_id),
+                 organism = "hsapiens")
+  write.table(gp %>% filter(domain != "tf") %>% arrange(domain, p.value),
+              file.path(outputPath, "deseq.Vitronectin_vs_Geltrex.gprofiler_enrich.PSEN_downregulated_genes.txt"), col.names=T, row.names=F, quote=F, sep="\t")
+}
+```

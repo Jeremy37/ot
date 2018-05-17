@@ -1,4 +1,4 @@
-newgrp otcoregen # Set primary group to otcoregen so new files have this group by default
+#newgrp otcoregen # Set primary group to otcoregen so new files have this group by default
 JS=/lustre/scratch115/realdata/mdt3/projects/otcoregen/jeremys
 SEQ=$JS/ipsneurons/GRCh38
 SRC=$JS/src/ipsneurons
@@ -214,13 +214,16 @@ done
 samtools view -H "cram/23882_5#1.cram" | ~/src/utils/bam/genomeFileFromBamHeader.py > GRCh38.genome.txt
 
 # Convert from CRAM to BigWig format for easier viewing in IGV
-cat irods.sample_lanes.new.txt | submitJobs.py --MEM 2000 --jobname mergeBams \
+cat irods.sample_lanes.txt | submitJobs.py --MEM 2000 --jobname mergeBams \
     --command "~/src/utils/bam/mergeBams.py --indir cram --outdir . --insuffix .cram --outsuffix .bam"
 
-cut -f 1 irods.sample_lanes.new.txt | submitJobs.py --MEM 1000 --jobname indexBams \
+grep "Successfully completed" FarmOut/mergeBams.*.txt | wc -l
+grep -iP "Failed|TERM|error" FarmOut/mergeBams.*.txt | wc -l
+
+cut -f 1 irods.sample_lanes.txt | submitJobs.py --MEM 1000 --jobname indexBams \
     --command "~/src/utils/bam/indexBams.py --bamdir . --insuffix .bam"
 
-cut -f 1 irods.sample_lanes.new.txt | submitJobs.py --MEM 3000 --jobname bamCoverageToBigWig \
+cut -f 1 irods.sample_lanes.txt | submitJobs.py --MEM 3000 --jobname bamCoverageToBigWig \
     --command "~/src/utils/coverage/bam2bigwig.py --genome GRCh38.genome.txt --indir . --split"
 echo "4860STDY7028461" | submitJobs.py --MEM 3000 --jobname bamCoverageToBigWig \
     --command "~/src/utils/coverage/bam2bigwig.py --genome GRCh38.genome.txt --indir . --split"
@@ -249,7 +252,9 @@ done
 
 # Count reads mapping to genes
 GENCODE_GTF=$JS/reference/GRCh38/gencode.v27.annotation.gtf
-cut -f1 irods.sample_lanes.new.txt | submitJobs.py --MEM 1000 -j featureCounts -c "~/src/utils/counts/bam2counts.py --sampleDir . --gtf $GENCODE_GTF --strand 2 --countsSuffix .counts.txt --bamSuffix .bam --execute True"
+cut -f1 irods.sample_lanes.txt | submitJobs.py --MEM 1000 -j featureCounts -c "~/src/utils/counts/bam2counts.py --sampleDir . --gtf $GENCODE_GTF --strand 2 --countsSuffix .counts.txt --bamSuffix .bam --execute True"
+grep "Successfully completed" FarmOut/featureCounts.*.txt | wc -l
+grep -iP "Failed|TERM|error" FarmOut/featureCounts.*.txt | wc -l
 
 # I noticed a high rate of reads not mapping to any feature (gene). The same was not
 # true for my sensory neurons. I thought I would check whether I get a lower rate
@@ -266,5 +271,5 @@ cd $SEQ/RNA/analysis
 # Combine counts for samples into a single file
 Rscript $SRC/rna/ipsneurons.combine_counts.R ../irods.sample_lanes.txt .. ipsneurons.counts.txt.gz
 
-
+	
 

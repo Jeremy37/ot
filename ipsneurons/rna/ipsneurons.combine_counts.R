@@ -1,6 +1,5 @@
-library("dplyr")
-library("tidyr")
-library("readr")
+#!/usr/bin/env Rscript
+library(tidyverse)
 
 args <- commandArgs(trailingOnly = TRUE)
 samples.fname = args[1]

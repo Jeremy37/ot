@@ -21,7 +21,7 @@ files <- list.files(path=file.path(root, basedir, "JEME/roadmap"), pattern="*.tx
 numFiles = length(files)
 
 linkscore.df = data.frame(key=character(0))
-lapply(files, function(fname) {
+x = lapply(files, function(fname) {
   id = strsplit(basename(fname), "\\.")[[1]][1]
   EID = roadmap.meta[match(id, roadmap.meta$id), ]$sampleName
   eid.df <- readr::read_tsv(fname, col_names = c("chr", "pos", "gene", "score"))
@@ -32,6 +32,7 @@ lapply(files, function(fname) {
   eid.df2 = eid.df %>% dplyr::rename(!!EID := "score") %>% dplyr::select(-chr, -pos, -gene)
   linkscore.df <<- linkscore.df %>% dplyr::full_join(eid.df2, by="key")
 })
+rm(x)
 
 getTopScores = function(df, i, ntop=0) {
   names = colnames(df)[!is.na(df[i,])]

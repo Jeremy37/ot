@@ -18,9 +18,19 @@ $JS/src/gwas/merge_Toby_Jimmy_finemap.R data/TJ.AD.all_causal_v1.txt data/IGAP1_
 $JS/src/gwas/doOverlaps.sh toby.jimmy.finemap.merged.txt toby.jimmy.finemap.merged
 
 bash $JS/src/gwas/overlap.JEME.sh toby.jimmy.finemap.merged.input.chr.bed
-Rscript $JS/src/gwas/merge_JEME_overlaps.R
-# produces file toby.jimmy.finemap.annotated.roadmapEnhPromLinks.txt
+cp toby.jimmy.finemap.merged.annotated.txt AD.finemap.annotated.txt
 
+# produces file toby.jimmy.finemap.annotated.roadmapEnhPromLinks.txt
+submitJobs.py --MEM 10000 -j AD.annotate.JEME -q yesterday \
+    -c "Rscript $JS/src/gwas/merge_JEME_overlaps.R 'gwas/AD' 'AD.finemap.annotated'"
+
+################################################################################
+# Next run lines in run_coloc.sh
+# Then run annotate.coloc.R
+# Finally, filter SNPs on finemap probability (if desired)
+
+submitJobs.py --MEM 10000 -j AD.annotate.coloc -q yesterday \
+    -c "Rscript $JS/src/coloc/annotate.coloc.R"
 
 
 ################################################################################
@@ -59,6 +69,9 @@ submitJobs.py --MEM 10000 -j PD.annotate.JEME -q yesterday \
 ################################################################################
 # Next run lines in run_coloc.sh
 # Then run annotate.coloc.R
+submitJobs.py --MEM 10000 -j PD.annotate.coloc -q yesterday \
+    -c "Rscript $JS/src/coloc/annotate.coloc.R"
+
 # Finally, filter SNPs on finemap probability (if desired)
 (head -n 1 $JS/gwas/PD/PD.finemap.annotated.colocs.txt; \
  sed '1d' $JS/gwas/PD/PD.finemap.annotated.colocs.txt | awk '$8 > 0') \
