@@ -10,8 +10,7 @@ exons_fname = args[3]
 genes_fname = args[4]
 
 sqtl.introns <- readr::read_tsv(sqtl_introns_fname) %>%
-  dplyr::select(-geneSymbol) %>%
-  dplyr::rename(clusterID = ensemblID)
+  dplyr::rename(clusterID = feature)
 
 #Inefficient way of getting the chr, start, end, but gets the job done
 sqtl.introns$chr = sapply(sqtl.introns$clusterID, function(x) {strsplit(x, split=":", fixed=T)[[1]][1]})
@@ -44,7 +43,7 @@ sqtl.overlaps = sqtl.overlaps[, .(paste(c(geneid), collapse=","), paste(c(geneSy
 sqtl.overlaps$clusterKey = paste(sqtl.overlaps$chr, sqtl.overlaps$start, sqtl.overlaps$end, sqtl.overlaps$cluster, sep=":")
 
 sqtl.introns.new = sqtl.introns %>% dplyr::left_join(sqtl.overlaps %>% dplyr::select(clusterKey, geneid, geneSymbol), by=c("clusterID" = "clusterKey"))
-write.table(sqtl.introns.new %>% dplyr::select(-chr, -start, -end, -cluster),
+write.table(sqtl.introns.new %>% dplyr::select(-start, -end, -cluster),
             file=paste0(sqtl_introns_fname, ".ann.txt"),
             quote=F, row.names=F, col.names=T, sep="\t")
 

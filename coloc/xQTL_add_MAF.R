@@ -7,14 +7,14 @@ inFname = args[1]
 mafFname = args[2]
 outFname = args[3]
 
-snp.df = readr::read_tsv(inFname, col_names = c("chr", "pos", "snp"))
-maf.df = readr::read_tsv(mafFname, col_names = c("snp", "maf"))
+snp.df = readr::read_tsv(inFname, col_names = c("chr", "pos", "rsid"))
+maf.df = readr::read_tsv(mafFname, col_names = c("rsid", "MAF"))
 
-snp.df = snp.df %>% dplyr::left_join(maf.df, by="snp") %>%
+snp.df = snp.df %>% dplyr::left_join(maf.df, by="rsid") %>%
   dplyr::mutate(ref = "-") %>%
   dplyr::mutate(alt = "-") %>%
-  dplyr::select(chr, pos, snp, ref, alt, maf)
+  dplyr::select(chr, pos, rsid, MAF)
 
 gzf = gzfile(outFname, open = "w")
-readr::write_tsv(snp.df, gzf, col_names = F, na = "")
+readr::write_tsv(snp.df, gzf, col_names = T, na = "")
 close(gzf)

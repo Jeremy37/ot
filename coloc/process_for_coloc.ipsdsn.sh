@@ -62,22 +62,22 @@ cd $JS/sensoryneurons
 
 ## This works for the test, but fails for the full VCF file, due to regions which cover
 # some "patch" regions of chr1 which aren't present in the Fasta file.
-# CrossMap.py vcf $JS/software/CrossMap/GRCh38_to_GRCh37.chain.gz <(zcat GRCh38/imputed.97_samples.snps_indels.INFO_08.cut.vcf.gz | head -n 200) \
-#     $JS/reference/GRCh37/GRCh37.p13.genome.nochr.fa.gz \
-#     GRCh37/imputed.97_samples.snps_indels.INFO_08.GRCh37.test.vcf
-# submitJobs.py --MEM 1000 -j CrossMap.sensoryneurons.GRCh38_to_GRCh37 -q yesterday -n 2 \
-#     -c "CrossMap.py vcf $JS/software/CrossMap/GRCh38_to_GRCh37.chain.gz GRCh38/imputed.97_samples.snps_indels.INFO_08.cut.vcf.gz $JS/reference/GRCh37/GRCh37.p13.genome.nochr.fa.gz GRCh37/imputed.97_samples.snps_indels.INFO_08.GRCh37.vcf"
-
-zcat $SN/rasqual/imputed.97_samples.snps_indels.INFO_08.selected_samples.vcf.gz | cut -f 1-9 \
-    | perl -ne 'if (/^#/) { print; } else { print "chr".$_; }' \
-    | gzip > GRCh38/imputed.97_samples.snps_indels.INFO_08.chr.cut.vcf.gz
-
-CrossMap.py vcf $JS/software/CrossMap/hg38ToHg19.over.chain.gz <(zcat GRCh38/imputed.97_samples.snps_indels.INFO_08.chr.cut.vcf.gz | head -n 200) \
-    $JS/reference/GRCh37/GRCh37.p13.genome.fa.gz \
+CrossMap.py vcf $JS/software/CrossMap/GRCh38_to_GRCh37.chain.gz <(zcat GRCh38/imputed.97_samples.snps_indels.INFO_08.cut.vcf.gz | head -n 200) \
+    $JS/reference/GRCh37/GRCh37.p13.genome.nochr.fa.gz \
     GRCh37/imputed.97_samples.snps_indels.INFO_08.GRCh37.test.vcf
-
 submitJobs.py --MEM 1000 -j CrossMap.sensoryneurons.GRCh38_to_GRCh37 -q yesterday -n 2 \
-    -c "CrossMap.py vcf $JS/software/CrossMap/hg38ToHg19.over.chain.gz GRCh38/imputed.97_samples.snps_indels.INFO_08.chr.cut.vcf.gz $JS/reference/GRCh37/GRCh37.p13.genome.fa.gz GRCh37/imputed.97_samples.snps_indels.INFO_08.GRCh37.chr.vcf"
+    -c "CrossMap.py vcf $JS/software/CrossMap/GRCh38_to_GRCh37.chain.gz GRCh38/imputed.97_samples.snps_indels.INFO_08.cut.vcf.gz $JS/reference/GRCh37/GRCh37.75.dna.toplevel.fa.gz GRCh37/imputed.97_samples.snps_indels.INFO_08.GRCh37.vcf"
+
+#zcat $SN/rasqual/imputed.97_samples.snps_indels.INFO_08.selected_samples.vcf.gz | cut -f 1-9 \
+#    | perl -ne 'if (/^#/) { print; } else { print "chr".$_; }' \
+#    | gzip > GRCh38/imputed.97_samples.snps_indels.INFO_08.chr.cut.vcf.gz
+
+#CrossMap.py vcf $JS/software/CrossMap/hg38ToHg19.over.chain.gz <(zcat GRCh38/imputed.97_samples.snps_indels.INFO_08.chr.cut.vcf.gz | head -n 200) \
+#    $JS/reference/GRCh37/GRCh37.p13.genome.fa.gz \
+#    GRCh37/imputed.97_samples.snps_indels.INFO_08.GRCh37.test.vcf
+
+s#ubmitJobs.py --MEM 1000 -j CrossMap.sensoryneurons.GRCh38_to_GRCh37 -q yesterday -n 2 \
+#    -c "CrossMap.py vcf $JS/software/CrossMap/hg38ToHg19.over.chain.gz GRCh38/imputed.97_samples.snps_indels.INFO_08.chr.cut.vcf.gz $JS/reference/GRCh37/GRCh37.p13.genome.fa.gz GRCh37/imputed.97_samples.snps_indels.INFO_08.GRCh37.chr.vcf"
 gzip GRCh37/imputed.97_samples.snps_indels.INFO_08.GRCh37.chr.vcf
 zcat GRCh37/imputed.97_samples.snps_indels.INFO_08.GRCh37.chr.vcf.gz | sed -e 's/chr//' | bgzip > GRCh37/imputed.97_samples.snps_indels.INFO_08.GRCh37.vcf.gz
 

@@ -7,98 +7,124 @@ options(stringsAsFactors = F)
 root = "/lustre/scratch115/realdata/mdt3/projects/otcoregen/jeremys"
 #root = "/Users/jeremys/work/opentargets"
 
-# prefix = "coloc.AD.meta"
-# outputroot = file.path(root, "gwas", "AD", "AD.finemap.annotated")
-# annotated_gwas = file.path(root, "gwas", "AD", "AD.finemap.annotated.roadmapEnhPromLinks.txt")
-# output_file = paste0(outputroot, ".colocs.txt")
-
-prefix = "coloc.PD.meta"
-outputroot = file.path(root, "gwas", "PD", "PD.finemap.annotated")
-annotated_gwas = file.path(root, "gwas", "PD", "JEME", "PD.finemap.annotated.roadmapEnhPromLinks.txt")
+prefix = "coloc.AD.meta"
+outputroot = file.path(root, "gwas", "AD", "AD.finemap.annotated")
+annotated_gwas = file.path(root, "gwas", "AD", "JEME", "AD.finemap.annotated.roadmapEnhPromLinks.txt")
 output_file = paste0(outputroot, ".colocs.txt")
 
-coloc.macrophage.eqtl.df = readr::read_tsv(file.path(root, "coloc", "ipsmacrophage", paste0(prefix, ".featureCounts.1e+05.txt"))) %>%
-  dplyr::rename(phenotype_id = ensemblID) %>%
-  dplyr::mutate(dataset = paste0("Macrophage eQTL ", condition), dataset_short = paste0("mac_eqtl_", condition)) %>%
-  dplyr::select(-condition)
-coloc.macrophage.sqtl.df = readr::read_tsv(file.path(root, "coloc", "ipsmacrophage", paste0(prefix, ".leafcutter.1e+05.txt.ann.txt"))) %>%
-  dplyr::rename(phenotype_id = clusterID) %>%
-  dplyr::mutate(dataset = paste0("Macrophage sQTL ", condition), dataset_short = paste0("mac_eqtl_", condition)) %>%
-  dplyr::select(-condition, -geneid)
-coloc.macrophage.reviseAnn.df = readr::read_tsv(file.path(root, "coloc", "ipsmacrophage", paste0(prefix, ".reviseAnnotations.1e+05.txt"))) %>%
-  dplyr::rename(phenotype_id = ensemblID) %>%
-  dplyr::mutate(dataset = paste0("Macrophage reviseAnnotations ", condition), dataset_short = paste0("mac_eqtl_", condition)) %>%
-  dplyr::select(-condition, -reviseAnn)
+# prefix = "coloc.PD.meta"
+# outputroot = file.path(root, "gwas", "PD", "PD.finemap.annotated")
+# annotated_gwas = file.path(root, "gwas", "PD", "JEME", "PD.finemap.annotated.roadmapEnhPromLinks.txt")
+# output_file = paste0(outputroot, ".colocs.txt")
 
-coloc.macrophage.sqtl.df$geneSymbol[is.na(coloc.macrophage.sqtl.df$geneSymbol)] = coloc.macrophage.sqtl.df$phenotype_id[is.na(coloc.macrophage.sqtl.df$geneSymbol)]
-
-
-coloc.mono.eqtl.df = readr::read_tsv(file.path(root, "coloc", "blueprint", paste0(prefix, ".mono_gene_eQTL.1e+05.txt")))
-# Use Ensembl to HGNC map to add in gene symbol
-ensemblMap = readr::read_tsv(file.path(root, "reference", "hgnc.ensembl.map.txt"))
-coloc.mono.eqtl.df %<>% dplyr::left_join(ensemblMap, by=c("phenotype_id" = "ensembl_gene_id")) %>%
-  dplyr::filter(!duplicated(phenotype_id, symbol)) %>%
-  dplyr::select(-symbol_type) %>%
-  dplyr::rename(geneSymbol = symbol) %>%
-  dplyr::mutate(dataset = "Blueprint monocyte eQTL", dataset_short = "mono_eqtl")
+###############################################################################
+# Macrophage
+mac_conditions = c("naive", "IFNg", "SL1344", "IFNg_SL1344")
+coloc.macrophage.eqtl.df = data.frame()
+coloc.macrophage.sqtl.df = data.frame()
+coloc.macrophage.txrevise_promoters.df = data.frame()
+coloc.macrophage.txrevise_ends.df = data.frame()
+for (condition in mac_conditions) {
+  eqtl.df = readr::read_tsv(file.path(root, "coloc", "new", sprintf("%s.ips_macrophage.eQTL_%s.5e+05.txt", prefix, condition))) %>%
+    dplyr::mutate(dataset = paste0("Macrophage eQTL ", condition), dataset_short = paste0("mac_eqtl_", condition), ensembl_id = feature, geneSymbol = NA)
+  coloc.macrophage.eqtl.df = bind_rows(coloc.macrophage.eqtl.df, eqtl.df)
   
-coloc.mono.h3k27ac.df = readr::read_tsv(file.path(root, "coloc", "blueprint", paste0(prefix, ".mono_K27AC.1e+05.txt"))) %>%
+  sqtl.df = readr::read_tsv(file.path(root, "coloc", "new", sprintf("%s.ips_macrophage.leafcutter_QTL_%s.5e+05.txt.ann.txt", prefix, condition))) %>%
+    dplyr::mutate(dataset = paste0("Macrophage sQTL ", condition), dataset_short = paste0("mac_sqtl_", condition)) %>%
+    dplyr::rename(feature = clusterID, ensembl_id = geneid) %>%
+    dplyr::select(-ensembl_id, -geneSymbol, everything(), ensembl_id, geneSymbol)
+  coloc.macrophage.sqtl.df = bind_rows(coloc.macrophage.sqtl.df, sqtl.df)
+  
+  txrevise_promoters.df = readr::read_tsv(file.path(root, "coloc", "new", sprintf("%s.ips_macrophage.txrevise_promoters_%s.5e+05.txt", prefix, condition))) %>%
+    dplyr::mutate(dataset = paste0("Macrophage TxRevise promoters ", condition), dataset_short = paste0("mac_txrevise_prom_", condition), ensembl_id = NA, geneSymbol = NA)
+  coloc.macrophage.txrevise_promoters.df = bind_rows(coloc.macrophage.txrevise_promoters.df, txrevise_promoters.df)
+  
+  txrevise_ends.df = readr::read_tsv(file.path(root, "coloc", "new", sprintf("%s.ips_macrophage.txrevise_ends_%s.5e+05.txt", prefix, condition))) %>%
+    dplyr::mutate(dataset = paste0("Macrophage TxRevise ends ", condition), dataset_short = paste0("mac_txrevise_ends_", condition), ensembl_id = NA, geneSymbol = NA)
+  coloc.macrophage.txrevise_ends.df = bind_rows(coloc.macrophage.txrevise_ends.df, txrevise_ends.df)
+}
+
+# Update the ensembl ID for each of these
+coloc.macrophage.txrevise_promoters.df$ensembl_id = sapply(coloc.macrophage.txrevise_promoters.df$feature, FUN = function(x) {strsplit(x, "\\.")[[1]][1]})
+coloc.macrophage.txrevise_ends.df$ensembl_id = sapply(coloc.macrophage.txrevise_ends.df$feature, FUN = function(x) {strsplit(x, "\\.")[[1]][1]})
+
+
+###############################################################################
+# Blueprint
+coloc.mono.eqtl.df = readr::read_tsv(file.path(root, "coloc", "new", paste0(prefix, ".blueprint.mono_gene_eQTL.5e+05.txt"))) %>%
+  dplyr::mutate(dataset = "Blueprint monocyte eQTL", dataset_short = "mono_eQTL",
+                ensembl_id = feature, geneSymbol = NA)
+
+coloc.mono.h3k27ac.df = readr::read_tsv(file.path(root, "coloc", "new", paste0(prefix, ".blueprint.mono_K27AC.5e+05.txt"))) %>%
   dplyr::mutate(dataset = "Blueprint monocyte H3K27ac", dataset_short = "mono_h3k27ac",
-                geneSymbol = paste0("peak_", phenotype_id))
+                ensembl_id = NA, geneSymbol = paste0("peak_", feature))
 
-coloc.mono.h3k4me1.df = readr::read_tsv(file.path(root, "coloc", "blueprint", paste0(prefix, ".mono_K4ME1.1e+05.txt"))) %>%
+coloc.mono.h3k4me1.df = readr::read_tsv(file.path(root, "coloc", "new", paste0(prefix, ".blueprint.mono_K4ME1.5e+05.txt"))) %>%
   dplyr::mutate(dataset = "Blueprint monocyte H3K4me1", dataset_short = "mono_h3k4me1",
-                geneSymbol = paste0("peak_", phenotype_id))
+                ensembl_id = NA, geneSymbol = paste0("peak_", feature))
 
+
+###############################################################################
+# xQTL
 # xQTL colocs have the gene symbol in the EnsemblID column
-coloc.xqtl.eqtl.df = readr::read_tsv(file.path(root, "coloc", "xQTL", paste0(prefix, ".xQTL_eQTL.1e+05.txt"))) %>%
+coloc.xqtl.eqtl.df = readr::read_tsv(file.path(root, "coloc", "new", paste0(prefix, ".xQTL_eQTL.5e+05.txt"))) %>%
   dplyr::mutate(dataset = "Brain ROSMAP eQTL", dataset_short = "xQTL_eQTL",
-                geneSymbol = phenotype_id)
+                ensembl_id = NA, geneSymbol = feature)
 
 # When getting haQTL and mQTLs, we want to provide some indication as to which
 # peak / CpG a QTL refers to. We need to extract this from another file, in this
 # case the *.minp file for each peak.
-coloc.xqtl.haqtl.df = readr::read_tsv(file.path(root, "coloc", "xQTL", paste0(prefix, ".xQTL_haQTL.1e+05.txt"))) %>%
-  dplyr::mutate(dataset = "Brain ROSMAP H3K27ac", dataset_short = "xQTL_h3k27ac")
+coloc.xqtl.haqtl.df = readr::read_tsv(file.path(root, "coloc", "new", paste0(prefix, ".xQTL_haQTL.5e+05.txt"))) %>%
+  dplyr::mutate(dataset = "Brain ROSMAP H3K27ac", dataset_short = "xQTL_h3k27ac", ensembl_id = NA)
 haqtl.colnames = c("featureName", "SNPchromosome", "SNPpos", "SNPid", "featureChromosome", "featurePositionStart", "SpearmanRho", "pValue")
 xqtl.haqtl.minp.df =  readr::read_tsv(file.path(root, "reference", "xQTL", "xQTL_haQTL.gene_minp.txt.gz"), col_names = haqtl.colnames)
-xqtl.haqtl.minp.df = xqtl.haqtl.minp.df %>% dplyr::mutate(geneSymbol = paste(featureName, featureChromosome, featurePositionStart, sep = "_")) %>%
-  dplyr::rename(ensemblID = featureName)
+xqtl.haqtl.minp.df = xqtl.haqtl.minp.df %>% dplyr::mutate(geneSymbol = paste(featureName, featureChromosome, featurePositionStart, sep = "_"))
 coloc.xqtl.haqtl.df = coloc.xqtl.haqtl.df %>%
-  dplyr::left_join(xqtl.haqtl.minp.df %>% dplyr::select(ensemblID, geneSymbol), by=c("phenotype_id" = "ensemblID"))
+  dplyr::left_join(xqtl.haqtl.minp.df %>% dplyr::select(featureName, geneSymbol), by=c("feature" = "featureName"))
 
-coloc.xqtl.mqtl.df = readr::read_tsv(file.path(root, "coloc", "xQTL", paste0(prefix, ".xQTL_mQTL.1e+05.txt"))) %>%
-  dplyr::mutate(dataset = "Brain ROSMAP DNA methylation", dataset_short = "xQTL_meth")
+coloc.xqtl.mqtl.df = readr::read_tsv(file.path(root, "coloc", "new", paste0(prefix, ".xQTL_mQTL.5e+05.txt"))) %>%
+  dplyr::mutate(dataset = "Brain ROSMAP DNA methylation", dataset_short = "xQTL_meth", ensembl_id = NA)
 mqtl.colnames = c("featureName", "SNPchromosome", "SNPpos", "SNPid", "featureChromosome", "featurePositionStart", "SpearmanRho", "pValue")
 xqtl.mqtl.minp.df =  readr::read_tsv(file.path(root, "reference", "xQTL", "xQTL_mQTL.gene_minp.txt.gz"), col_names = mqtl.colnames)
-xqtl.mqtl.minp.df = xqtl.mqtl.minp.df %>% dplyr::mutate(geneSymbol = paste(featureName, featureChromosome, featurePositionStart, sep = "_")) %>%
-  dplyr::rename(ensemblID = featureName)
+xqtl.mqtl.minp.df = xqtl.mqtl.minp.df %>% dplyr::mutate(geneSymbol = paste(featureName, featureChromosome, featurePositionStart, sep = "_"))
 coloc.xqtl.mqtl.df = coloc.xqtl.mqtl.df %>%
-  dplyr::left_join(xqtl.mqtl.minp.df %>% dplyr::select(ensemblID, geneSymbol), by=c("phenotype_id" = "ensemblID"))
+  dplyr::left_join(xqtl.mqtl.minp.df %>% dplyr::select(featureName, geneSymbol), by=c("feature" = "featureName"))
 
 rm(xqtl.haqtl.minp.df, xqtl.mqtl.minp.df)
 
-coloc.sensneur.eqtl.df = readr::read_tsv(file.path(root, "coloc", "sensoryneuron", paste0(prefix, ".sens_neur.500k.1e+05.txt")))
-# Use Ensembl to HGNC map to add in gene symbol
-coloc.sensneur.eqtl.df %<>% dplyr::left_join(ensemblMap, by=c("phenotype_id" = "ensembl_gene_id")) %>%
-  dplyr::filter(!duplicated(phenotype_id, symbol)) %>%
-  dplyr::select(-symbol_type) %>%
-  dplyr::rename(geneSymbol = symbol) %>%
-  dplyr::mutate(dataset = "Sensory neuron eQTL", dataset_short = "sensneur_eqtl")
 
-# For sensory neuron sQTLs, get "gene symbol" to use from the original lead SNP file
-coloc.sensneur.sqtl.df = readr::read_tsv(file.path(root, "coloc", "sensoryneuron", paste0(prefix, ".sens_neur.sqtl.1e+05.txt")))
-sensneurLeadSQTL.df = readr::read_tsv(file.path(root, "sensoryneurons", "GRCh38", "sqtl", "fastqtl.sqtl.permutations.10k.PCs.5.fdr0.1.txt"))
-geneSummary = function(i) {
-  if (grepl("[A-Za-z]", sensneurLeadSQTL.df[i,]$symbols)) {
-    return(sensneurLeadSQTL.df[i,]$symbols)
-  }
-  return(sensneurLeadSQTL.df[i,]$ensembl_ids)
-}
-sensneurLeadSQTL.df$geneSymbol = sapply(1:nrow(sensneurLeadSQTL.df), FUN = geneSummary)
-coloc.sensneur.sqtl.df %<>% dplyr::left_join(sensneurLeadSQTL.df %>% dplyr::select(phenotype_id, geneSymbol),
-                                             by="phenotype_id") %>%
-  dplyr::mutate(dataset = "Sensory neuron sQTL", dataset_short = "sensneur_sqtl")
+###############################################################################
+# Sensory neurons
+coloc.sensneur.eqtl.df = readr::read_tsv(file.path(root, "coloc", "new", paste0(prefix, ".sens_neur.eqtl.500k.5e+05.txt"))) %>%
+  dplyr::mutate(dataset = "Sensory neuron eQTL", dataset_short = "sensneur_eqtl",
+                ensembl_id = feature, geneSymbol = NA)
+
+coloc.sensneur.sqtl.df = readr::read_tsv(file.path(root, "coloc", "new", paste0(prefix, ".sens_neur.sqtl.5e+05.txt.ann.txt"))) %>%
+  dplyr::mutate(dataset = paste0("Sensory neuron sQTL ", condition), dataset_short = "sensneur_sqtl") %>%
+  dplyr::rename(feature = clusterID, ensembl_id = geneid) %>%
+  dplyr::select(-ensembl_id, -geneSymbol, everything(), ensembl_id, geneSymbol)
+
+
+# # Use Ensembl to HGNC map to add in gene symbol
+# coloc.sensneur.eqtl.df %<>% dplyr::left_join(ensemblMap, by=c("phenotype_id" = "ensembl_gene_id")) %>%
+#   dplyr::filter(!duplicated(phenotype_id, symbol)) %>%
+#   dplyr::select(-symbol_type) %>%
+#   dplyr::rename(geneSymbol = symbol) %>%
+#   dplyr::mutate(dataset = "Sensory neuron eQTL", dataset_short = "sensneur_eqtl")
+# 
+# # For sensory neuron sQTLs, get "gene symbol" to use from the original lead SNP file
+# sensneurLeadSQTL.df = readr::read_tsv(file.path(root, "sensoryneurons", "GRCh38", "sqtl", "fastqtl.sqtl.permutations.10k.PCs.5.fdr0.1.txt"))
+# geneSummary = function(i) {
+#   if (grepl("[A-Za-z]", sensneurLeadSQTL.df[i,]$symbols)) {
+#     return(sensneurLeadSQTL.df[i,]$symbols)
+#   }
+#   return(sensneurLeadSQTL.df[i,]$ensembl_ids)
+# }
+# sensneurLeadSQTL.df$geneSymbol = sapply(1:nrow(sensneurLeadSQTL.df), FUN = geneSummary)
+# coloc.sensneur.sqtl.df %<>% dplyr::left_join(sensneurLeadSQTL.df %>% dplyr::select(phenotype_id, geneSymbol),
+#                                              by="phenotype_id") %>%
+#   dplyr::mutate(dataset = "Sensory neuron sQTL", dataset_short = "sensneur_sqtl")
+
 
 
 ###############################################################################
@@ -106,28 +132,33 @@ coloc.sensneur.sqtl.df %<>% dplyr::left_join(sensneurLeadSQTL.df %>% dplyr::sele
 
 # Write out a smaller version of the table, including each region-coloc as one row.
 colocs.df = rbind(coloc.macrophage.eqtl.df,
-                     coloc.macrophage.sqtl.df,
-                     coloc.macrophage.reviseAnn.df,
-                     coloc.mono.eqtl.df,
-                     coloc.mono.h3k27ac.df,
-                     coloc.mono.h3k4me1.df,
-                     coloc.xqtl.eqtl.df,
-                     coloc.xqtl.haqtl.df,
-                     coloc.xqtl.mqtl.df,
-                     coloc.sensneur.eqtl.df,
-                     coloc.sensneur.sqtl.df
-) %>% dplyr::rename(gwas_snp = gwas_lead)
-colocs.df = rbind(coloc.mono.eqtl.df,
+                  coloc.macrophage.sqtl.df,
+                  coloc.macrophage.txrevise_promoters.df,
+                  coloc.macrophage.txrevise_ends.df,
+                  coloc.mono.eqtl.df,
                   coloc.mono.h3k27ac.df,
                   coloc.mono.h3k4me1.df,
                   coloc.xqtl.eqtl.df,
                   coloc.xqtl.haqtl.df,
+                  coloc.xqtl.mqtl.df,
                   coloc.sensneur.eqtl.df,
                   coloc.sensneur.sqtl.df
 ) %>% dplyr::rename(gwas_snp = gwas_lead)
 
-colocs.df$geneSymbol[is.na(colocs.df$geneSymbol)] = colocs.df$phenotype_id[is.na(colocs.df$geneSymbol)]
 
+###############################################################################
+# Use Ensembl to HGNC map to add in gene symbol where it isn't already present
+
+ensemblMap = readr::read_tsv(file.path(root, "reference", "hgnc.ensembl.map.txt")) %>%
+  dplyr::filter(symbol_type == "symbol")
+colocs.df %<>% dplyr::left_join(ensemblMap, by=c("ensembl_id" = "ensembl_gene_id")) %>%
+  dplyr::select(-symbol_type)
+colocs.df$geneSymbol[is.na(colocs.df$geneSymbol)] = colocs.df$symbol[is.na(colocs.df$geneSymbol)]
+colocs.df = colocs.df %>% dplyr::select(-symbol)
+
+
+
+###############################################################################
 # Identify the GWAS signal that each coloc correspond with
 # First read in the GWAS fine mapping table
 annotated.df = readr::read_tsv(annotated_gwas) %>%
@@ -156,14 +187,14 @@ signals.df = annotated.df %>%
 # GWAS lead SNP IDs to those from the QTL variant info, and if the QTL variant
 # info used a different ID (e.g. chr17_40051621 rather than rs...) then the
 # IDs won't match.
-colocs.df$chrpos = paste0(colocs.df$gwas_chr, ".", colocs.df$gwas_pos)
+colocs.df$chrpos = paste0(colocs.df$chr, ".", colocs.df$gwas_pos)
 colocs.df %<>% dplyr::left_join(signals.df, by="chrpos")
 colocs.df %<>% dplyr::select(-chrpos)
 
 # Remove any duplicate entries with the same gwas_lead and qtl_lead SNP,
 # and arrange in order of decreasing H4 probability
 colocs.df %<>% dplyr::arrange(qtl_pval) %>%
-  dplyr::mutate(sortkey = paste(gwas_lead, qtl_lead, phenotype_id, sep=".")) %>%
+  dplyr::mutate(sortkey = paste(gwas_lead, qtl_lead, feature, sep=".")) %>%
   dplyr::filter(!duplicated(sortkey)) %>%
   dplyr::select(-sortkey) %>%
   dplyr::mutate(H4_rel_H3H4 = PP.H4 / (PP.H3 + PP.H4)) %>%
