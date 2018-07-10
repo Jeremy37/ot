@@ -12,10 +12,24 @@ bedtools intersect -a AD.leadSNPs.1Mb_window.chr.bed -b $JS/reference/GRCh37/gen
 
 cd $AD/causalR
 
-Rscript $JS/src/gwas/overlap_causalR.R AD.leadSNPs.1Mb_window.gene_overlaps.txt MAYO_ADvCntl_DiffExp_ALL.txt \
+Rscript $JS/src/gwas/overlap_causalR.R ../genes/AD.leadSNPs.1Mb_window.gene_overlaps.txt MAYO_ADvCntl_DiffExp_ALL.txt \
    FullCausalRresults_MAYO_ADvCntl.pathlength_1.txt \
    FullCausalRresults_MAYO_ADvCntl.pathlength_2.txt \
    FullCausalRresults_MAYO_ADvCntl.pathlength_3.txt \
    FullCausalRresults_MAYO_ADvCntl.pathlength_4.txt \
    > AD.GWAS_locus_genes.CausalR_annotated.txt
+
+Rscript $JS/src/gwas/overlap_causalR.R ../genes/AD.leadSNPs.1Mb_window.gene_overlaps.txt MAYO_ADvCntl_DiffExp_ALL.txt \
+   FullCausalRresults_MAYO_ADvCntl.CER.pathlength_1.txt \
+   FullCausalRresults_MAYO_ADvCntl.CER.pathlength_2.txt \
+   FullCausalRresults_MAYO_ADvCntl.CER.pathlength_3.txt \
+   FullCausalRresults_MAYO_ADvCntl.CER.pathlength_4.txt \
+   > AD.GWAS_locus_genes.CausalR_annotated.CER.txt
+
+Rscript $JS/src/gwas/overlap_causalR.R ../genes/AD.leadSNPs.1Mb_window.gene_overlaps.txt MAYO_ADvCntl_DiffExp_ALL.txt \
+   FullCausalRresults_MAYO_ADvCntl.TCX.pathlength_1.txt \
+   FullCausalRresults_MAYO_ADvCntl.TCX.pathlength_2.txt \
+   FullCausalRresults_MAYO_ADvCntl.TCX.pathlength_3.txt \
+   FullCausalRresults_MAYO_ADvCntl.TCX.pathlength_4.txt \
+   > AD.GWAS_locus_genes.CausalR_annotated.TCX.txt
    

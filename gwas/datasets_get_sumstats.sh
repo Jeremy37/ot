@@ -2,8 +2,10 @@ OT=/lustre/scratch115/realdata/mdt3/projects/otcoregen
 
 cd $OT/jeremys/datasets/GWAS
 
-# Alzheimer's disease
+################################################################################
+# Alzheimer's disease v1
 F=$OT/AD_PD_finemap/summary_stats/AD.IGAP1_GWAX.meta.gz
+F=$OT/AD_PD_finemap/summary_stats/AD.IGAP1_GWAX_v2.meta.gz
 #gzhead 1 $F
 #CHR BP SNP A1 A2 GWAS_BETA GWAS_SE GWAS_P GWAX_BETA GWAX_SE GWAX_P META_BETA META_SE META_P I2 HET_P DIRECT
 
@@ -20,6 +22,22 @@ tabix -f -s 2 -b 3 -e 3 -S 1 Alzheimers_disease_Liu_2017_UKBB_GWAX_meta.sorted.t
 (gzhead 1 Alzheimers_disease_Liu_2017_UKBB_GWAX_meta.sorted.txt.gz; \
  zcat Alzheimers_disease_Liu_2017_UKBB_GWAX_meta.sorted.txt.gz | awk 'BEGIN{FS="\t"} {if ($6 < 1e-5) print}') \
  | bgzip > Alzheimers_disease_Liu_2017_UKBB_GWAX_meta.top_hits.txt.gz
+
+
+################################################################################
+# Alzheimer's disease v2 (Jimmy's update with UKBB EUR samples)
+F=$OT/AD_PD_finemap/summary_stats/AD.IGAP1_GWAX_v2.meta.gz
+#gzhead 1 $F
+#CHR BP SNP A1 A2 GWAS_BETA GWAS_SE GWAS_P GWAX_BRITISH_BETA GWAX_BRITISH_SE GWAX_BRITISH_P GWAX_EU_BETA GWAX_EU_SE GWAX_EU_P META_BETA META_SE META_P DIRECT I2 HET_P
+
+time (echo -e "SNP\tCHR\tBP\tA1\tMAF\tMETA_P\tMETA_BETA\tOR\tlog_OR\tMETA_SE\tz_score\ttrait\tPMID\tused_file"; 
+ zcat $F | sed '1d' \
+ | perl -ane 'print join("\t", $F[2],$F[0],$F[1],$F[3],"",$F[16],$F[14],"","",$F[15],"","AD","","")."\n";' \
+ | sort -k2,2 -k3,3n) \
+ | bgzip > Alzheimers_disease_Liu_2017_UKBB_GWAX_meta_v2.sorted.txt.gz
+
+tabix -f -s 2 -b 3 -e 3 -S 1 Alzheimers_disease_Liu_2017_UKBB_GWAX_meta_v2.sorted.txt.gz
+
 
 
 ################################################################################

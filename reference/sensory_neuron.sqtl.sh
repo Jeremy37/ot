@@ -18,3 +18,6 @@ Rscript $JS/src/misc/plotSensoryneuronSqtl.R --args cluster=clu_48150 snpid=rs11
 
 Rscript $JS/src/misc/plotSensoryneuronSqtl.R --args cluster=clu_28666 snpid=rs700828 genotypeCounts=../all.leadSNPs.genotype_counts.txt.gz genotypeMap=../sensoryneuron.merged_sample_genotype_map.txt clusterPerind=sqtl.clusters_perind_numers.ratios.txt.gz nominals=sqtl.fastqtl.nominals.txt.gz
 
+Rscript $JS/src/misc/plotSensoryneuronSqtl.R --args cluster=clu_17169 snpid=rs13432074 genotypeCounts=../all.leadSNPs.genotype_counts.txt.gz genotypeMap=../sensoryneuron.merged_sample_genotype_map.txt clusterPerind=sqtl.clusters_perind_numers.ratios.txt.gz nominals=sqtl.fastqtl.nominals.txt.gz
+
+Rscript $JS/src/misc/plotSensoryneuronSqtl.R --args cluster=clu_9125 snpid=rs35186494 genotypeCounts=../all.leadSNPs.genotype_counts.txt.gz genotypeMap=../sensoryneuron.merged_sample_genotype_map.txt clusterPerind=sqtl.clusters_perind_numers.ratios.txt.gz nominals=sqtl.fastqtl.nominals.txt.gz

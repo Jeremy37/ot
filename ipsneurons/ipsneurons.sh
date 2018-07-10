@@ -1,3 +1,4 @@
+#!/bin/bash
 #newgrp otcoregen # Set primary group to otcoregen so new files have this group by default
 JS=/lustre/scratch115/realdata/mdt3/projects/otcoregen/jeremys
 SEQ=$JS/ipsneurons/GRCh38
@@ -59,6 +60,17 @@ cut -f 1 irods.sample_lanes.txt | submitJobs.py --MEM 3000 --jobname bamCoverage
 grep "Successfully completed" FarmOut/bamCoverageToBigWig.*.txt | wc -l
 grep "memory" FarmOut/bamCoverageToBigWig.*.txt | wc -l
 grep -iP "Failed|TERM|error" FarmOut/bamCoverageToBigWig.*.txt | wc -l
+
+# Make links to bigwig files all in one folder
+mkdir bigwig
+cd bigwig
+while read LINE; do
+  ID=`echo $LINE | perl -ane 'print $F[0];'`
+  NAME=`echo $LINE | perl -ane 'print $F[1];'`
+  ln -s ../$ID/$ID.bw $NAME.bw
+done < ../sample_id_map.txt
+
+ln -s 
 
 ##### ATAC-seq QC metrics
 cut -f 1 irods.sample_lanes.txt | submitJobs.py --MEM 3000 --jobname countReadsPerChr --command "python ~/src/utils/bam/countReadsPerChr.py --indir . --outdir . --insuffix .bam"
@@ -227,6 +239,17 @@ cut -f 1 irods.sample_lanes.txt | submitJobs.py --MEM 3000 --jobname bamCoverage
     --command "~/src/utils/coverage/bam2bigwig.py --genome GRCh38.genome.txt --indir . --split"
 echo "4860STDY7028461" | submitJobs.py --MEM 3000 --jobname bamCoverageToBigWig \
     --command "~/src/utils/coverage/bam2bigwig.py --genome GRCh38.genome.txt --indir . --split"
+
+
+# Make links to bigwig files all in one folder
+mkdir bigwig
+cd bigwig
+while read LINE; do
+  ID=`echo $LINE | perl -ane 'print $F[0];'`
+  NAME=`echo $LINE | perl -ane 'print $F[1];'`
+  ln -s ../$ID/$ID.bw $NAME.bw
+done < ../sample_id_map.txt
+
 
 # Use verifyBamID to ensure that the files match the expected HIPSCI sample
 KOLF2_VCF=$SEQ/genotypes/kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.vcf.gz

@@ -4,13 +4,10 @@ library(gridExtra)
 library(grid)
 myargs <- NULL
 
-# myargs = list()
-# myargs$cluster = "clu_55409"
-# myargs$snpid = "rs4147914"
-# myargs$genotypeCounts = "/Users/jeremys/work/opentargets/sensoryneurons/GRCh38/all.leadSNPs.genotype_counts.txt.gz"
-# myargs$genotypeMap = "/Users/jeremys/work/opentargets/sensoryneurons/GRCh38/sensoryneuron.merged_sample_genotype_map.txt"
-# myargs$clusterPerind = "/Users/jeremys/work/opentargets/sensoryneurons/GRCh38/sqtl/sqtl.clusters_perind_numers.ratios.txt.gz"
-# myargs$nominals = "/Users/jeremys/work/opentargets/sensoryneurons/GRCh38/sqtl/sqtl.fastqtl.nominals.txt.gz"
+# myargs = list(cluster = "clu_9125", snpid = "rs35186494", genotypeCounts = "/Users/jeremys/work/opentargets/sensoryneurons/GRCh38/all.leadSNPs.genotype_counts.txt.gz",
+#               genotypeMap = "/Users/jeremys/work/opentargets/sensoryneurons/GRCh38/sensoryneuron.merged_sample_genotype_map.txt",
+#               clusterPerind = "/Users/jeremys/work/opentargets/sensoryneurons/GRCh38/sqtl/sqtl.clusters_perind_numers.ratios.txt.gz",
+#               nominals = "/Users/jeremys/work/opentargets/sensoryneurons/GRCh38/sqtl/sqtl.fastqtl.nominals.txt.gz")
 
 main = function()
 {
