@@ -120,4 +120,32 @@ python $JS/src/experiment/paired.deletion.analysis.py --input analysis/input.tsv
 python $JS/src/experiment/paired.deletion.analysis.py --input analysis/input.test.tsv --out analysis/batch1_test --genome $JS/reference/GRCh38/Homo_sapiens.GRCh38_15.fa --minMapQ 0 
 
 
+################################################################################
+# Run my analysis pipeline
+
+Rscript $JS/src/experiment/paired.deletion.analysis.R --regions --replicates --out --viewing_window 30 --exclude_multiple_deletions F --exclude_nonspanning_reads T --exclude_nonspanning_deletions T
+
+submitJobs.py --MEM 4000 -j batch1.del.analysis.1 -q yesterday \
+ -c "Rscript $JS/src/experiment/paired.deletion.analysis.R --regions --replicates --out --viewing_window 30 --exclude_multiple_deletions F --exclude_nonspanning_reads T --exclude_nonspanning_deletions T"
+
+
+
+# make_option(c("--regions"), type="character", default=NULL, help=""),
+# make_option(c("--replicates"), type="character", default=NULL, help=""),
+# make_option(c("--out"), type="character", default=NULL, help=""),
+# make_option(c("--minMapQ"), type="integer", default=0, help=""),
+# make_option(c("--subsample"), type="numeric", default=NULL, help=""),
+# make_option(c("--max_mismatch_frac"), type="numeric", default=0.05, help=""),
+# make_option(c("--viewing_window"), type="integer", default=1000, help=""),
+# make_option(c("--editing_window"), type="integer", default=10, help=""),
+# make_option(c("--min_window_overlap"), type="integer", default=30, help=""),
+# make_option(c("--exclude_multiple_deletions"), type="logical", default=F, action="store_true", help=""),
+# make_option(c("--exclude_nonspanning_reads"), type="logical", default=T, action="store_true", help=""),
+# make_option(c("--exclude_nonspanning_deletions"), type="logical", default=T, action="store_true", help=""),
+# make_option(c("--uns_plot_min_gDNA"), type="integer", default=10, help=""),
+# make_option(c("--uns_plot_min_cDNA"), type="integer", default=0, help=""),
+# make_option(c("--uns_plot_max_udps"), type="integer", default=40, help=""),
+# make_option(c("--no_allele_profile"), type="logical", default=F, action="store_true", help=""),
+# make_option(c("--no_site_profile"), type="logical", default=F, action="store_true", help="")
+
 
