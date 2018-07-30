@@ -123,11 +123,38 @@ python $JS/src/experiment/paired.deletion.analysis.py --input analysis/input.tes
 ################################################################################
 # Run my analysis pipeline
 
-Rscript $JS/src/experiment/paired.deletion.analysis.R --regions --replicates --out --viewing_window 30 --exclude_multiple_deletions F --exclude_nonspanning_reads T --exclude_nonspanning_deletions T
+JS=/lustre/scratch115/realdata/mdt3/projects/otcoregen/jeremys
+PATH=$PATH:/software/solexa/pkg/bwa/0.7.17
+cd $JS/experiment/transcribed/batch1
 
-submitJobs.py --MEM 4000 -j batch1.del.analysis.1 -q yesterday \
- -c "Rscript $JS/src/experiment/paired.deletion.analysis.R --regions --replicates --out --viewing_window 30 --exclude_multiple_deletions F --exclude_nonspanning_reads T --exclude_nonspanning_deletions T"
+# For some reason, on the farm my code was crashing deep within dlyr. Installing
+# the same (slightly older) version as I had on my Mac seemed to fix this.
+# I tried 0.7.4, but on the farm it gives slightly different results! I.e. plots
+# aren't properly sorted by UDP start position. I'm not sure what side-effect
+# behaviour I'm depending on that would cause this...
+# Trying 0.7.5 gave the crash again, but it's intermittent.
+require(devtools)
+install_version("dplyr", version = "0.7.5", repos = "http://cran.us.r-project.org")
 
+Rscript $JS/src/experiment/paired.deletion.analysis.R --regions regions.test.tsv --replicates replicates.test.tsv --out analysis/batch1.test \
+  --viewing_window 40 --exclude_multiple_deletions F --exclude_nonspanning_reads T --exclude_nonspanning_deletions F --editing_window 1
+
+
+submitJobs.py --MEM 8000 -j batch1.del.analysis.1 -q yesterday \
+ -c "Rscript $JS/src/experiment/paired.deletion.analysis.R --regions regions.test.tsv --replicates replicates.test.tsv --out analysis/batch1.test \
+     --viewing_window 40 --exclude_multiple_deletions F --exclude_nonspanning_reads T --exclude_nonspanning_deletions F"
+
+submitJobs.py --MEM 8000 -j batch1.del.analysis.edit_dels -q yesterday \
+ -c "Rscript $JS/src/experiment/paired.deletion.analysis.R --regions regions.test.tsv --replicates replicates.test.tsv --out analysis/batch1.edit_dels \
+     --exclude_multiple_deletions F --exclude_nonspanning_reads T --exclude_nonspanning_deletions F"
+
+submitJobs.py --MEM 8000 -j batch1.del.analysis.edit_dels.window_30 -q yesterday \
+ -c "Rscript $JS/src/experiment/paired.deletion.analysis.R --regions regions.test.tsv --replicates replicates.test.tsv --out analysis/batch1.edit_dels.60bp_window \
+     --viewing_window 30 --exclude_multiple_deletions F --exclude_nonspanning_reads T --exclude_nonspanning_deletions T"
+
+submitJobs.py --MEM 8000 -j batch1.del.analysis.all_dels -q yesterday \
+ -c "Rscript $JS/src/experiment/paired.deletion.analysis.R --regions regions.test.tsv --replicates replicates.test.tsv --out analysis/batch1.all_dels \
+     --exclude_multiple_deletions F --exclude_nonspanning_reads T --exclude_nonspanning_deletions F"
 
 
 # make_option(c("--regions"), type="character", default=NULL, help=""),
