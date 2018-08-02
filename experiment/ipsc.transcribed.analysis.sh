@@ -7,9 +7,12 @@ cd $JS/experiment/transcribed/batch1
 #cd $JS/reference/GRCh38
 #submitJobs.py --MEM 8000 -j bwa_index -c "bwa index -a bwtsw $JS/reference/GRCh38/Homo_sapiens.GRCh38_15.fa -p $JS/reference/GRCh38/bwa_index/Homo_sapiens.GRCh38_15.fa"
 
+sed '1d' transcribed_experiment.batch1.meta.changed.txt | submitJobs.py --MEM 8000 --ncores 2 -j align_fastq \
+    -c "~/src/utils/align/bwaAlignPE.py --outputDir bam --noSampleDir --fastqDir fastq --nCores 2 --genomeDir $JS/reference/GRCh38/bwa_index/Homo_sapiens.GRCh38_15.fa"
+
+
 sed '1d' transcribed_experiment.batch1.meta.txt | submitJobs.py --MEM 8000 --ncores 2 -j align_fastq \
     -c "~/src/utils/align/bwaAlignPE.py --outputDir bam_relaxed --noSampleDir --fastqDir fastq --nCores 2 --params '-O 6,7 -E 1,2 -B 6 -L 20' --genomeDir $JS/reference/GRCh38/bwa_index/Homo_sapiens.GRCh38_15.fa"
-
 sed '1d' transcribed_experiment.batch1.meta.txt | grep "26_gDNA_1" | submitJobs.py --MEM 8000 --ncores 2 -j align_fastq \
     -c "~/src/utils/align/bwaAlignPE.py --outputDir bam_relaxed --noSampleDir --fastqDir fastq --nCores 2 --params '-O 10,15 -E 1,4 -A 2 -B 10 -L 80 -d 180' --genomeDir $JS/reference/GRCh38/bwa_index/Homo_sapiens.GRCh38_15.fa"
 sed '1d' transcribed_experiment.batch1.meta.txt | grep "26_gDNA_1" | submitJobs.py --MEM 8000 --ncores 2 -j align_fastq \
