@@ -23,4 +23,4 @@ for (f in chrCountFiles) {
 }
 
 counts.df[is.na(counts.df)] = 0
-write.table(counts.df, file="", col.names=T, row.names=F, quote=F, sep="\t")
+write.table(counts.df[, order(colnames(counts.df))], file="", col.names=T, row.names=F, quote=F, sep="\t")

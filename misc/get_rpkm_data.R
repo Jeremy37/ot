@@ -1,5 +1,6 @@
 #!/usr/bin/env Rscript
 library(dplyr)
+source("../R/countUtils.R")
 root = "/Users/jeremys/work/opentargets"
 
 ###########################################################################
@@ -108,6 +109,35 @@ combined.meta = rbind(combined.meta, ipsneurons.meta %>% dplyr::select(sampleID,
 
 
 ###########################################################################
+# Fiona / Gaffney microglia
+microglia.counts.df = readr::read_tsv(file.path(root, "microglia", "microglia_counts_matrix.gz"))
+transcript_data.df = readr::read_tsv(file.path(root, "reference", "GRCh38", "GRCh38.p12.geneid_hgnc_length.txt.gz"))
+
+gene_data.df = transcript_data.df %>% group_by(gene_id) %>%
+  arrange(gene_id, -transcript_length) %>%
+  dplyr::summarise(length = max(transcript_length), transcript_id = first(transcript_id), hgnc_symbol = first(hgnc_symbol))
+microglia.genes.df = microglia.counts.df %>% dplyr::select(gene_id = Geneid) %>%
+  dplyr::left_join(gene_data.df, by="gene_id")
+
+microglia.counts.mat = microglia.counts.df %>% dplyr::select(-Geneid) %>% as.matrix()
+rownames(microglia.counts.mat) = microglia.counts.df$Geneid
+microglia.rpkm.df = as.data.frame(countsToRPKM(microglia.counts.mat, microglia.genes.df, useDeseq=T))
+
+microglia.meta = data.frame(sampleID = colnames(microglia.rpkm.df),
+                            group = paste0("microglia_gaffney"))
+microglia.rpkm.df$gene_id = microglia.genes.df$gene_id
+
+combined.df = combined.df %>%
+  dplyr::full_join(microglia.rpkm.df, by="gene_id")
+combined.meta = rbind(combined.meta, microglia.meta)
+
+
+###########################################################################
+# Blueprint
+
+
+
+###########################################################################
 
 # Now annotate the full combined table with HGNC gene symbols (and their previous symbols)
 hgnc.df = readr::read_tsv(file.path(root, "reference/hgnc_complete_set.txt")) %>%
@@ -200,10 +230,19 @@ write.table(group.cv.df.short,
 # Write a smaller subset of cells/tissues of greatest interest
 
 gzf = gzfile(file.path(root, "reference/tissueRPKM/tissues.selected.rpkm_average.txt.gz"), "w")
-write.table(combined.avg.df.short %>% dplyr::select(gene_id, IPSC, iNeuron_d9, iNeuron_d11, NPC, neuron,
-                                              IPSDSN, macrophage_naive, macrophage_IFNg_SL1344,
-                                              `gtex.Brain - Hippocampus`, `gtex.Brain - Frontal Cortex (BA9)`),
-            file=gzf, row.names=F, col.names=T, quote=F, sep="\t")
+combined.avg.df.selected = combined.avg.df.short %>%
+  dplyr::select(gene_id, IPSC, iNeuron_d9, iNeuron_d11, NPC, neuron, IPSDSN,
+                macrophage_naive, macrophage_IFNg, macrophage_SL1344, macrophage_IFNg_SL1344, microglia_gaffney,
+                `gtex.Brain - Hippocampus`, `gtex.Brain - Frontal Cortex (BA9)`)
+write.table(combined.avg.df.selected, file=gzf, row.names=F, col.names=T, quote=F, sep="\t")
 close(gzf)
+
+gzf = gzfile(file.path(root, "reference/tissueRPKM/tissues.selected.expr_ranks.txt.gz"), "w")
+combined.avg.df.selected.ranks = cbind(combined.avg.df[,1:4],
+                                       apply(-combined.avg.df[,-1:-5], MARGIN=2,
+                                             FUN=function(x) rank(x, na.last = "keep", ties.method = "average")))
+write.table(combined.avg.df.selected.ranks, file=gzf, row.names=F, col.names=T, quote=F, sep="\t", na="")
+close(gzf)
+
 
 

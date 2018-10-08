@@ -66,7 +66,7 @@ main = function()
   opt <<- list(#input = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1/analysis/udp_replicates.tsv",
     regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_redo/regions.tsv",
     replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_redo/replicates.tsv",
-    out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_redo/analysis/batch1_redo.sarah.edit_dels.2bp_window",
+    out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_redo/analysis/batch1_redo.sarah.edit_dels.2bp_window.new_varcomp",
     minMapQ = 0,
     subsample = NULL,
     max_mismatch_frac = 0.05,
@@ -90,6 +90,7 @@ main = function()
     power_analysis = T,
     variance_analysis_min_count = 100,
     read_data = "analysis/batch1_redo.sarah.read_data.rds")
+  
   opt <<- list(
     regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1/regions.tsv",
     replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1/replicates.tsv",
@@ -117,6 +118,35 @@ main = function()
     power_analysis = T,
     variance_analysis_min_count = 100,
     read_data = "analysis/batch1.read_data.new.rds")
+  
+  opt <<- list(#input = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1/analysis/udp_replicates.tsv",
+    regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1/regions.tsv",
+    replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_redo/batch1_combined.replicates.tsv",
+    out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_redo/analysis/batch1_combined.edit_dels.2bp_window",
+    minMapQ = 0,
+    subsample = NULL,
+    max_mismatch_frac = 0.05,
+    #viewing_window = 30, # window around the cut site for viewing
+    viewing_window = 40,
+    editing_window = 1, # window around the cut site for counting deletions as edits
+    min_window_overlap = 30, # minimum number of read bases correctly aligned within the region of interest
+    exclude_multiple_deletions = F,
+    exclude_nonspanning_reads = T,
+    exclude_nonspanning_deletions = T,
+    uns_plot_min_gDNA = 10,
+    uns_plot_min_cDNA = 0,
+    uns_plot_max_udps = 40,
+    no_allele_profile = F,
+    no_site_profile = F,
+    no_udp_profile = F,
+    no_uns_profile = F,
+    no_stats = F,
+    no_replicate_plots = T,
+    variance_analysis = F,
+    power_analysis = F,
+    variance_analysis_min_count = 100,
+    read_data = "analysis/batch1.combined.read_data.rds") 
+  
   cat("All options:\n")
   printList(opt)
   
@@ -208,22 +238,11 @@ main = function()
     annotation_custom(tableGrob(settings.df, theme = myTableTheme), xmin=1, xmax=9, ymin=1, ymax=9) +
     ggtitle("CRISPR editing analysis settings")
   
-  fname = sprintf("%s.plots.test.pdf", opt$out)
+  fname = sprintf("%s.plots.pdf", opt$out)
   pdf(file = fname, width = 8, height = 7)
   print(settingsPlot)
   print(all_region_plots)
   dev.off()
-  
-  # fname = sprintf("%s.summary_plots.pdf", opt$out)
-  # pdf(file = fname, width = 8, height = 7)
-  # print(settingsPlot)
-  # for (region_plots in all_region_plots) {
-  #   print(region_plots$stats)
-  #   print(region_plots$merged_udp)
-  #   print(region_plots$merged_del_profile)
-  #   print(region_plots$merged_UNS)
-  # }
-  # dev.off()
   
   if (!opt$no_allele_profile) {
     df = bind_rows(lapply(all_results, function(res) res$wt_hdr.df))
@@ -237,12 +256,12 @@ main = function()
     
     df = bind_rows(lapply(all_results, function(res) res$merged.udp.df))
     fname = sprintf("%s.merged_udps.tsv", opt$out)
-    write.table(df, fname, quote=F, row.names=F, col.names=T, na="", na="", sep="\t")
+    write.table(df, fname, quote=F, row.names=F, col.names=T, na="", sep="\t")
   }
   if (!opt$no_uns_profile) {
     df = bind_rows(lapply(all_results, function(res) res$uns.df))
     fname = sprintf("%s.uns.tsv", opt$out)
-    write.table(df, fname, quote=F, row.names=F, col.names=T, sep="\t")
+    write.table(df, fname, quote=F, row.names=F, col.names=T, na="", sep="\t")
   }
   if (!opt$no_site_profile) {
     df = bind_rows(lapply(all_results, function(res) res$site.profiles.df))
@@ -283,12 +302,6 @@ main = function()
     fname = sprintf("%s.region_stats.tsv", opt$out)
     write.table(stats.summary.df, fname, quote=F, row.names=F, col.names=T, sep="\t")
   }
-  
-  # if (opt$variance_analysis) {
-  #   replicate.udp.df = bind_rows(lapply(all_results, function(res) res$replicate.udp.df))
-  #   # Get all columns of the replicate dataframe which begin with "replicate"
-  #   replicate_cols = colnames(replicates.df)[grepl("^replicate_", colnames(replicates.df))]
-  # }
 }
 
 
@@ -430,24 +443,27 @@ doFullDeletionAnalysis = function(region, replicates.df, read_data = NULL)
   
   p.variance_components = NULL
   if (opt$variance_analysis) {
-    p.variance_components = getVarianceComponentsPlots(replicate.udp.df, replicates.df, method = "log_reads", min_udp_total_count = opt$variance_analysis_min_count)
+    p.variance_components = getVarianceComponentsPlots(replicate.udp.df, replicates.df, method = "read_fraction", min_udp_total_count = opt$variance_analysis_min_count)
   }
   
   p.variance_fit = NULL
   p.power = NULL
+  p.replicate_allocation = NULL
   if (opt$power_analysis) {
     power_plots = getPowerPlots(replicate.udp.df, replicates.df, titlestr = region$name, min_udp_total_count = opt$variance_analysis_min_count)
     p.variance_fit = power_plots$cv_plots
     p.power = power_plots$power
+    p.replicate_allocation = power_plots$replicate_allocation
   }
   
-  plot_list = list(stats = stats_res$p.stats1,
+  plot_list = list(stats = stats_res$p.stats,
                    merged_udp = p.merged_UDP,
                    merged_del_profile = p.del_profile,
                    merged_UNS = p.merged_UNS,
                    variance_components = p.variance_components,
                    variance_fit = p.variance_fit,
                    power = p.power,
+                   replicate_allocation = p.replicate_allocation,
                    replicate_plots = replicate_plots)
   
   read_data = lapply(replicate_list, FUN = function(x) x$read_data)
@@ -513,7 +529,7 @@ getFullReplicateStats = function(replicate_list) {
     #fm1 = betabin(cbind(hdr, wt) ~ is_cDNA, ~ 1, data = test.df[,2:4])
     #test.df.hdr$is_cDNA[3] = T
     betabin_warn_err = ""
-    res_hdr = tryCatch(fm1 <- betabin(cbind(hdr, wt) ~ is_cDNA, ~ 1, data = test.df.hdr[2:3,2:4]),
+    res_hdr = tryCatch(fm1 <- betabin(cbind(hdr, wt) ~ is_cDNA, ~ 1, data = test.df.hdr[,2:4]),
                        error = function(e) e, warning = function(w) w)
     betabin_hdr_star = ""
     if (is(res_hdr, "warning") | is(res_hdr, "error")) {
@@ -522,7 +538,7 @@ getFullReplicateStats = function(replicate_list) {
       if (is(res_hdr, "warning")) {
         # When it's a warning it still produces output, but for some reason
         # when we catch the exception the return value fm1 isn't assigned
-        fm1 <- betabin(cbind(hdr, wt) ~ is_cDNA, ~ 1, data = test.df.hdr[2:3,2:4])
+        fm1 <- betabin(cbind(hdr, wt) ~ is_cDNA, ~ 1, data = test.df.hdr[,2:4])
       }
     }
     betabin_hdr_pval_str = "**"
@@ -581,13 +597,13 @@ getFullReplicateStats = function(replicate_list) {
                                             colhead = list(fg_params=list(cex = mycex)),
                                             rowhead = list(fg_params=list(cex = mycex)),
                                             padding = unit(c(2, 4), "mm"))
-  p.stats1 = ggplot(data.frame(x=1:10, y=1:10), aes(x,y)) + geom_blank() + ggThemeBlank +
-    annotation_custom(tableGrob(t(stats.plot.df), theme = myTableTheme), xmin=1, xmax=9, ymin=1, ymax=8) +
+  p.stats = ggplot(data.frame(x=1:10, y=1:10), aes(x,y)) + geom_blank() + ggThemeBlank +
+    annotation_custom(tableGrob(t(stats.plot.df), theme = myTableTheme), xmin=2, xmax=10, ymin=1, ymax=8) +
     annotate("text", x=5, y=10, label = sprintf("%s summary", stats.df$name[1]), vjust = 1, fontface = 2, size = 5) +
     annotate("text", x=1, y=9.3, label = summary.method.prop, vjust = 1, hjust = 0, size = 3.5) +
     annotate("text", x=9.5, y=9.3, label = summary.method.betabin, vjust = 1, hjust = 1, size = 3.5)
   if (!opt$no_stats) {
-    p.stats1 = p.stats1 + annotate("text", x=1, y=1, label = "Data saved in *.replicate_stats.tsv", vjust = 1, hjust = 0, size = 3)
+    p.stats = p.stats + annotate("text", x=1, y=1, label = "Data saved in *.replicate_stats.tsv", vjust = 1, hjust = 0, size = 3)
   }
   
   stats.summary = list(hdr_wt.beta_binomial.res = fm1,
@@ -597,17 +613,7 @@ getFullReplicateStats = function(replicate_list) {
                        error_prop.summary = summary.method.prop,
                        beta_binomial.summary = summary.method.betabin)
   
-  # mainStr = sprintf("Estimate ('is_cDNA') for whether HDR / WT reads\nacross replicates differs for cDNA vs. gDNA",
-  #                   summary(fm1)@Coef$`Pr(> |z|)`[2])
-  # summaryStr = paste(capture.output(summary(fm1)), collapse = "\n")
-  # p.stats2 = ggplot(data.frame(x=c(0,1), y=c(0,1)), aes(x=x, y=y)) + theme_bw() + ggtitle(sprintf("Region %s stats", stats.df$name[1])) +
-  #   coord_cartesian(xlim=c(0,1), ylim=c(0,1)) +
-  #   annotate("text", x=0, y=1, label = mainStr, hjust = 0, vjust = 1, fontface = 2) +
-  #   annotate("text", x=0, y=0.85, label = summaryStr, hjust = 0, vjust = 1) +
-  #   theme(panel.grid.minor = element_blank(), panel.grid.major = element_blank(),
-  #         axis.text = element_blank(), axis.title = element_blank(), axis.ticks = element_blank())
-  
-  result_list = list(p.stats1 = p.stats1,
+  result_list = list(p.stats = p.stats,
                      stats.df = stats.df,
                      stats.summary = stats.summary)
   return(result_list)
@@ -1325,9 +1331,9 @@ getUNSData = function(replicate.udp.df, sites, region_name, min_gDNA_count = 10,
               mean_gDNA_count = mean(gDNA_count, na.rm = T),
               mean_cDNA_count = mean(cDNA_count, na.rm = T),
               cDNA_ratio = (mean_cDNA_count / wt_mean_cDNA_count),
-              sd_cDNA_ratio = vecRatioUncertaintySD(cDNA_count, wt_cDNA_count),
+              sd_cDNA_ratio = vecRatioUncertaintySD(cDNA_count, wt_cDNA_count) / sqrt(n()),
               gDNA_ratio = (mean_gDNA_count / wt_mean_gDNA_count),
-              sd_gDNA_ratio = vecRatioUncertaintySD(gDNA_count, wt_gDNA_count),
+              sd_gDNA_ratio = vecRatioUncertaintySD(gDNA_count, wt_gDNA_count) / sqrt(n()),
               is_hdr_allele = first(is_hdr_allele),
               is_wt_allele = first(is_wt_allele),
               has_crispr_deletion = first(has_crispr_deletion),
@@ -1552,7 +1558,7 @@ doVariancePartitionPlot = function(vp, residuals=T, color = NA) {
   return(p)
 }
 
-getVarianceComponentsPlots = function(replicate.udp.df, replicates.df, method = "log_reads", min_udp_total_count = 100) {
+getVarianceComponentsPlots = function(replicate.udp.df, replicates.df, method = "read_fraction", min_udp_total_count = 100) {
   replicate_cols = colnames(replicates.df)[grepl("^replicate_", colnames(replicates.df))]
   if (length(replicate_cols) < 1) {
     stop("--variance_analysis option given but no columns beginning with 'replicate_' found in the --replicates file")
@@ -1580,10 +1586,19 @@ getVarianceComponentsPlots = function(replicate.udp.df, replicates.df, method = 
   # of reads across replicates, ajusted for the expected variability for a
   # poisson process.
   getValueForVariance = function(replicate.udp.df, method) {
-    if (method == "reads") {
+    if (method == "read_fraction") {
+      replicate.numreads = replicate.udp.df %>%
+        dplyr::group_by(replicate) %>%
+        dplyr::summarise(replicate_num_reads = sum(num_reads))
+      replicate.udp.df = replicate.udp.df %>%
+        dplyr::left_join(replicate.numreads, by="replicate") %>%
+        dplyr::mutate(udp_fraction = num_reads / replicate_num_reads)
+      value = replicate.udp.df$udp_fraction
+    }
+    else if (method == "reads") {
       value = replicate.udp.df$num_reads
     }
-    if (method == "log_reads") {
+    else if (method == "log_reads") {
       value = log(replicate.udp.df$num_reads + 1)
     }
     else if (method == "deviation_from_poisson") {
@@ -1637,7 +1652,7 @@ getVarianceComponentsPlots = function(replicate.udp.df, replicates.df, method = 
                                             colhead = list(fg_params=list(cex = 0.75)),
                                             rowhead = list(fg_params=list(cex = 0.75)))
   
-  p.stats1 = ggplot(data.frame(x=1:10, y=1:10), aes(x,y)) + geom_blank() + ggThemeBlank +
+  p.stats = ggplot(data.frame(x=1:10, y=1:10), aes(x,y)) + geom_blank() + ggThemeBlank +
     annotation_custom(tableGrob(cDNA.summary.df, theme = myTableTheme), xmin=1, xmax=5, ymin=2, ymax=8.5) +
     annotation_custom(tableGrob(gDNA.summary.df, theme = myTableTheme), xmin=6, xmax=10, ymin=2, ymax=8.5) +
     # annotate("text", x=3.5, y=8, label = "cDNA", hjust = 0.5, fontface = 2, size = 5) +
@@ -1649,8 +1664,8 @@ getVarianceComponentsPlots = function(replicate.udp.df, replicates.df, method = 
     annotate("text", x=6.5, y=1, label = sprintf("Based on %d UDPs with read count > %d", nrow(vp.gDNA.df), min_udp_total_count),
              hjust = 0, vjust = 0, size = 3)
   
-  #egg::ggarrange(p.stats1, grid.arrange(p.cDNA, p.gDNA, ncol=2), nrow = 1)
-  plot_grid(p.stats1, plot_grid(p.cDNA, p.gDNA, nrow = 1), nrow = 2, rel_heights = c(0.4, 0.6))
+  #egg::ggarrange(p.stats, grid.arrange(p.cDNA, p.gDNA, ncol=2), nrow = 1)
+  plot_grid(p.stats, plot_grid(p.cDNA, p.gDNA, nrow = 1), nrow = 2, rel_heights = c(0.4, 0.6))
 }
 
 variancePartitionSummaryTable = function(vp.df) {
@@ -1712,26 +1727,27 @@ getPowerPlots = function(replicate.udp.df, replicates.df, titlestr = "", min_udp
   
   # An error may occur in NLS, so we need to catch it
   res = tryCatch({
-      # First fit a curve to a table of CV vs. mean read count.
-      cDNA.stats.df = getUDPStats(replicate.udp.df, "cDNA", min_udp_total_count)
-      fit.cDNA <- nls(udp_frac_cv ~ a + b * (1/sqrt(udp_frac_mean)), data = cDNA.stats.df,
-                      weights = log(cDNA.stats.df$udp_mean), start = list(a = 0, b = 1))
-      beta_cDNA <- coefficients(fit.cDNA)
-      
-      gDNA.stats.df = getUDPStats(replicate.udp.df, "gDNA", min_udp_total_count)
-      fit.gDNA <- nls(udp_frac_cv ~ a + b * (1/sqrt(udp_frac_mean)), data = gDNA.stats.df,
-                      weights = log(gDNA.stats.df$udp_mean), start = list(a = 0, b = 1))
-      beta_gDNA <- coefficients(fit.gDNA)
-    }
+    # First fit a curve to a table of CV vs. mean read count.
+    cDNA.stats.df = getUDPStats(replicate.udp.df, "cDNA", min_udp_total_count)
+    fit.cDNA <- nls(udp_frac_cv ~ a + b * (1/sqrt(udp_frac_mean)), data = cDNA.stats.df,
+                    weights = log(cDNA.stats.df$udp_mean), start = list(a = 0, b = 1))
+    beta_cDNA <- coefficients(fit.cDNA)
+    
+    gDNA.stats.df = getUDPStats(replicate.udp.df, "gDNA", min_udp_total_count)
+    fit.gDNA <- nls(udp_frac_cv ~ a + b * (1/sqrt(udp_frac_mean)), data = gDNA.stats.df,
+                    weights = log(gDNA.stats.df$udp_mean), start = list(a = 0, b = 1))
+    beta_gDNA <- coefficients(fit.gDNA)
+  }
   , error = function(e) e, warning = function(w) w)
   if (is(res, "error")) {
     warning(sprintf("%s: Error in NLS fitting to UDP CV vs. UDP fraction.\nPower plots cannot be generated.", titlestr))
     plot_list = list(cv_plots = NULL,
                      power = ggarrange(textPlot("Error in NLS fitting to UDP CV vs. UDP fraction.\nPower plots cannot be generated."),
-                                       top=powerPlotTitle, draw = F))
+                                       top=powerPlotTitle, draw = F),
+                     replicate_allocation = NULL)
     return(plot_list)
   }
-    
+  
   fitcDNAUDP_CV = function(udp_frac_mean) { beta_cDNA["a"] + beta_cDNA["b"]/sqrt(udp_frac_mean) }
   fitgDNAUDP_CV = function(udp_frac_mean) { beta_gDNA["a"] + beta_gDNA["b"]/sqrt(udp_frac_mean) }
   
@@ -1803,14 +1819,114 @@ getPowerPlots = function(replicate.udp.df, replicates.df, titlestr = "", min_udp
     stat_function(fun = function(x) power(2, x/100, x/100, n_cDNA_rep, n_gDNA_rep), mapping = aes(color = "2.0x"), size=1) +
     theme_bw() + xlab("UDP read %") + ylab("Power") +
     scale_color_discrete(name = "Effect size") +
-    xlab("UDP read %") + ylab("Power") +
     ggtitle(label = powerPlotTitle,
             subtitle = sprintf("Based on %d cDNA and %d gDNA replicates", n_cDNA_rep, n_gDNA_rep)) +
     theme(panel.grid.major = element_line(size = 1, colour = "grey95"),
           plot.title = element_text(size=14, hjust=0.5, face="bold"),
           plot.subtitle = element_text(size=12, hjust=0.5))
   
-  plot_list = list(cv_plots = p.cv_plots, power = p.power)
+  # We also make a plot that shows the optimal allocation of replicates to cDNA
+  # vs. gDNA.
+  replicateAllocationPlot = function(udpFraction, showTitle=T) {
+    getPowerDF = function(nRep, udpFraction) {
+      df1.1 = data.frame(x = seq(1:(nRep-1)), effectSize = 1.1, udpFraction = udpFraction)
+      df1.1$power = power(df1.1$effectSize, df1.1$udpFraction, df1.1$udpFraction, df1.1$x, nRep - df1.1$x)
+      df1.2 = data.frame(x = seq(1:(nRep-1)), effectSize = 1.2, udpFraction = udpFraction)
+      df1.2$power = power(df1.2$effectSize, df1.2$udpFraction, df1.2$udpFraction, df1.2$x, nRep - df1.2$x)
+      df = rbind(df1.1, df1.2)
+      df$effectSize = sprintf("%.1fx", df$effectSize)
+      df
+    }
+    df.fraction = data.frame(x=seq(0.01, 0.99, by=0.01))
+    df6 = getPowerDF(6, udpFraction)
+    df10 = getPowerDF(10, udpFraction)
+    df15 = getPowerDF(15, udpFraction)
+    df25 = getPowerDF(25, udpFraction)
+    nReps = factor(as.character(1:25), levels = as.character(1:25))
+    #p = ggplot(df, aes(x = x)) +
+    p = ggplot(df.fraction, aes(x = x)) +
+      geom_point(data = df6,  mapping = aes(x = x / 6, y = power, color = effectSize, shape = "6"), size = 2.5) +
+      geom_point(data = df10, mapping = aes(x = x / 10, y = power, color = effectSize, shape = "10"), size = 2.5) +
+      geom_point(data = df15, mapping = aes(x = x / 15, y = power, color = effectSize, shape = "15"), size = 2.5) +
+      geom_point(data = df25, mapping = aes(x = x / 25, y = power, color = effectSize, shape = "25"), size = 2.5) +
+      stat_function(fun = function(x) power(1.1, udpFraction, udpFraction, 6*x, 6*(1-x)),   mapping = aes(color = "1.1x"), size=0.8, alpha = 0.8) +
+      stat_function(fun = function(x) power(1.1, udpFraction, udpFraction, 10*x, 10*(1-x)), mapping = aes(color = "1.1x"), size=0.8, alpha = 0.8) +
+      stat_function(fun = function(x) power(1.1, udpFraction, udpFraction, 15*x, 15*(1-x)), mapping = aes(color = "1.1x"), size=0.8, alpha = 0.8) +
+      stat_function(fun = function(x) power(1.1, udpFraction, udpFraction, 25*x, 25*(1-x)), mapping = aes(color = "1.1x"), size=0.8, alpha = 0.8) +
+      stat_function(fun = function(x) power(1.2, udpFraction, udpFraction, 6*x, 6*(1-x)),   mapping = aes(color = "1.2x"), size=0.8, alpha = 0.8) +
+      stat_function(fun = function(x) power(1.2, udpFraction, udpFraction, 10*x, 10*(1-x)), mapping = aes(color = "1.2x"), size=0.8, alpha = 0.8) +
+      stat_function(fun = function(x) power(1.2, udpFraction, udpFraction, 15*x, 15*(1-x)), mapping = aes(color = "1.2x"), size=0.8, alpha = 0.8) +
+      stat_function(fun = function(x) power(1.2, udpFraction, udpFraction, 25*x, 25*(1-x)), mapping = aes(color = "1.2x"), size=0.8, alpha = 0.8) +
+      theme_bw() + xlab("Fraction of replicates cDNA") + ylab("Power") +
+      scale_y_continuous(breaks = c(0.2, 0.4, 0.6, 0.8, 1.0)) +
+      scale_x_continuous(breaks = c(0.2, 0.4, 0.6, 0.8, 1.0)) +
+      scale_color_discrete(name = "Effect size") +
+      scale_shape_manual(name = "N Replicates", values = c("6"=16, "10"=17, "15"=15, "25"=8), breaks=c("6", "10", "15", "25")) +
+      theme(panel.grid.major = element_line(size = 1, colour = "grey95"),
+            plot.title = element_text(size=14, hjust=0.5, face="bold"),
+            plot.subtitle = element_text(size=12, hjust=0.5))
+    subtitleStr = sprintf("UDP fraction %d%%", as.integer(udpFraction*100))
+    if (showTitle) {
+      p = p + ggtitle(label = powerPlotTitle, subtitle = subtitleStr)
+    } else {
+      p = p + ggtitle(label = NULL, subtitle = subtitleStr)
+    }
+    p
+  }
+  # replicateAllocationPlot = function(showTitle=T) {
+  #   getPowerDF = function(nRep, udpFraction) {
+  #     df1.1 = data.frame(x = seq(1:(nRep-1)), effectSize = 1.1, udpFraction = udpFraction)
+  #     df1.1$power = power(df1.1$effectSize, df1.1$udpFraction, df1.1$udpFraction, df1.1$x, nRep - df1.1$x)
+  #     df1.2 = data.frame(x = seq(1:(nRep-1)), effectSize = 1.2, udpFraction = udpFraction)
+  #     df1.2$power = power(df1.2$effectSize, df1.2$udpFraction, df1.2$udpFraction, df1.2$x, nRep - df1.2$x)
+  #     df = rbind(df1.1, df1.2)
+  #     #df$effectSize = sprintf("%.1fx", df$effectSize)
+  #     df$effectSize_fraction = sprintf("%.1fx, %g%%", df$effectSize, df$udpFraction*100)
+  #     df
+  #   }
+  #   df.fraction = data.frame(x=seq(0.01, 0.99, by=0.01))
+  #   df6 = rbind(getPowerDF(6, 0.01), getPowerDF(6, 0.1))
+  #   df10 = rbind(getPowerDF(10, 0.01), getPowerDF(10, 0.1))
+  #   df15 = rbind(getPowerDF(15, 0.01), getPowerDF(15, 0.1))
+  #   df25 = rbind(getPowerDF(25, 0.01), getPowerDF(25, 0.1))
+  #   p = ggplot(df.fraction, aes(x = x, alpha = "val")) +
+  #     geom_point(data = df6,  mapping = aes(x = x / 6, y = power, color = effectSize_fraction, shape = "6"), size = 2.5) +
+  #     geom_point(data = df10, mapping = aes(x = x / 10, y = power, color = effectSize_fraction, shape = "10"), size = 2.5) +
+  #     geom_point(data = df15, mapping = aes(x = x / 15, y = power, color = effectSize_fraction, shape = "15"), size = 2.5) +
+  #     geom_point(data = df25, mapping = aes(x = x / 25, y = power, color = effectSize_fraction, shape = "25"), size = 2.5) +
+  #     stat_function(fun = function(x) power(1.1, 0.01, 0.01, 6*x, 6*(1-x)),   mapping = aes(color = "1.1x, 1%"), size=0.8) +
+  #     stat_function(fun = function(x) power(1.1, 0.01, 0.01, 10*x, 10*(1-x)), mapping = aes(color = "1.1x, 1%"), size=0.8) +
+  #     stat_function(fun = function(x) power(1.1, 0.01, 0.01, 15*x, 15*(1-x)), mapping = aes(color = "1.1x, 1%"), size=0.8) +
+  #     stat_function(fun = function(x) power(1.1, 0.01, 0.01, 25*x, 25*(1-x)), mapping = aes(color = "1.1x, 1%"), size=0.8) +
+  #     stat_function(fun = function(x) power(1.2, 0.01, 0.01, 6*x, 6*(1-x)),   mapping = aes(color = "1.2x, 1%"), size=0.8) +
+  #     stat_function(fun = function(x) power(1.2, 0.01, 0.01, 10*x, 10*(1-x)), mapping = aes(color = "1.2x, 1%"), size=0.8) +
+  #     stat_function(fun = function(x) power(1.2, 0.01, 0.01, 15*x, 15*(1-x)), mapping = aes(color = "1.2x, 1%"), size=0.8) +
+  #     stat_function(fun = function(x) power(1.2, 0.01, 0.01, 25*x, 25*(1-x)), mapping = aes(color = "1.2x, 1%"), size=0.8) +
+  #     stat_function(fun = function(x) power(1.1, 0.1, 0.1, 6*x, 6*(1-x)),   mapping = aes(color = "1.1x, 10%"), size=0.8) +
+  #     stat_function(fun = function(x) power(1.1, 0.1, 0.1, 10*x, 10*(1-x)), mapping = aes(color = "1.1x, 10%"), size=0.8) +
+  #     stat_function(fun = function(x) power(1.1, 0.1, 0.1, 15*x, 15*(1-x)), mapping = aes(color = "1.1x, 10%"), size=0.8) +
+  #     stat_function(fun = function(x) power(1.1, 0.1, 0.1, 25*x, 25*(1-x)), mapping = aes(color = "1.1x, 10%"), size=0.8) +
+  #     stat_function(fun = function(x) power(1.2, 0.1, 0.1, 6*x, 6*(1-x)),   mapping = aes(color = "1.2x, 10%"), size=0.8) +
+  #     stat_function(fun = function(x) power(1.2, 0.1, 0.1, 10*x, 10*(1-x)), mapping = aes(color = "1.2x, 10%"), size=0.8) +
+  #     stat_function(fun = function(x) power(1.2, 0.1, 0.1, 15*x, 15*(1-x)), mapping = aes(color = "1.2x, 10%"), size=0.8) +
+  #     stat_function(fun = function(x) power(1.2, 0.1, 0.1, 25*x, 25*(1-x)), mapping = aes(color = "1.2x, 10%"), size=0.8) +
+  #     theme_bw() + xlab("Fraction of replicates cDNA") + ylab("Power") +
+  #     scale_y_continuous(breaks = c(0.2, 0.4, 0.6, 0.8, 1.0)) +
+  #     scale_x_continuous(breaks = c(0.2, 0.4, 0.6, 0.8, 1.0)) +
+  #     scale_color_manual(name = "Effect size", values = c("#FF0000", "#FF8888", "#0000FF", "#8888FF")) +
+  #     scale_alpha_manual(name = "Effect size", values = c(0.7)) +
+  #     scale_shape_manual(name = "N Replicates", values = c("6"=16, "10"=17, "15"=15, "25"=8), breaks=c("6", "10", "15", "25")) +
+  #     theme(panel.grid.major = element_line(size = 1, colour = "grey95"),
+  #           plot.title = element_text(size=14, hjust=0.5, face="bold"),
+  #           plot.subtitle = element_text(size=12, hjust=0.5)) +
+  #     ggtitle(label = powerPlotTitle, subtitle = sprintf("UDP fraction %d%%", as.integer(udpFraction*100)))
+  #   p
+  # }  
+  
+  p.replicate_allocation = egg::ggarrange(replicateAllocationPlot(0.01, showTitle=T), replicateAllocationPlot(0.1, showTitle=F),
+                                          ncol=1, heights = c(1,1), draw = F)
+  
+  plot_list = list(cv_plots = p.cv_plots, power = p.power, replicate_allocation = p.replicate_allocation)
   return(plot_list)
 }
 
