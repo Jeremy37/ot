@@ -376,7 +376,7 @@ colocQtlGWAS <- function(qtl, gwas, N_qtl, p1 = 1e-04, p2 = 1e-04, p12 = 1e-05, 
                                                  s = case_control_proportion,
                                                  snp = gwas$rsid, 
                                                  MAF = gwas$MAF),
-                                 p1, p2, p12)
+                                 p1 = p1, p2 = p2, p12 = p12)
   } else{
     coloc_res = coloc::coloc.abf(dataset1 = df1,
                                  dataset2 = list(beta = gwas$log_OR, 
@@ -384,7 +384,7 @@ colocQtlGWAS <- function(qtl, gwas, N_qtl, p1 = 1e-04, p2 = 1e-04, p12 = 1e-05, 
                                                  type = "cc", 
                                                  s = case_control_proportion,
                                                  snp = gwas$rsid),
-                                 p1, p2, p12)
+                                 p1 = p1, p2 = p2, p12 = p12)
   }
   
   return(coloc_res)
