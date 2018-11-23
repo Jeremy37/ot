@@ -21,7 +21,9 @@ options(stringsAsFactors = F)
 
 opt = NULL
 #setwd("/Users/jeremys/work/opentargets/experiment/transcribed/batch1_redo")
-#setwd("/Users/jeremys/work/opentargets/experiment/transcribed/batch1")
+#setwd("/Users/jeremys/work/opentargets/experiment/transcribed/batch2")
+#setwd("/Users/jeremys/work/opentargets/experiment/transcribed/batch1_snp26_repeats")
+#setwd("/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated")
 
 
 main = function()
@@ -44,6 +46,9 @@ main = function()
     make_option(c("--exclude_multiple_deletions"), type="logical", default=F, action="store_true", help="[default %default]"),
     make_option(c("--exclude_nonspanning_reads"), type="logical", default=T, action="store_true", help="[default %default]"),
     make_option(c("--exclude_nonspanning_deletions"), type="logical", default=T, action="store_true", help="[default %default]"),
+    make_option(c("--qc_plot_max_udps"), type="integer", default=20, metavar="INT", help="[default %default]"),
+    make_option(c("--qc_plot_min_udp_fraction"), type="integer", default=0.005, metavar="FLOAT", help="[default %default]"),
+    make_option(c("--qc_plot_exclude_wt"), type="logical", default=T, action="store_true", help="[default %default]"),
     make_option(c("--uns_plot_min_gDNA"), type="integer", default=10, metavar="INT", help="[default %default]"),
     make_option(c("--uns_plot_min_cDNA"), type="integer", default=0, metavar="INT", help="[default %default]"),
     make_option(c("--uns_plot_max_udps"), type="integer", default=40, metavar="INT", help="[default %default]"),
@@ -52,9 +57,11 @@ main = function()
     make_option(c("--no_udp_profile"), type="logical", default=F, action="store_true", help="[default %default]"),
     make_option(c("--no_uns_profile"), type="logical", default=F, action="store_true", help="[default %default]"),
     make_option(c("--no_stats"), type="logical", default=F, action="store_true", help="[default %default]"),
+    make_option(c("--no_summary_plots"), type="logical", default=F, action="store_true", help="[default %default]"),
     make_option(c("--no_replicate_plots"), type="logical", default=F, action="store_true", help="[default %default]"),
     make_option(c("--variance_analysis"), type="logical", default=F, action="store_true", help="[default %default]"),
-    make_option(c("--variance_analysis_min_count"), type="integer", default=100, action="store_true", help="[default %default]"),
+    make_option(c("--variance_analysis_min_count"), type="integer", default=100, help="[default %default]"),
+    make_option(c("--variance_analysis_min_fraction"), type="numeric", default=0.001, help="[default %default]"),
     make_option(c("--power_analysis"), type="logical", default=F, action="store_true", help="[default %default]"),
     make_option(c("--read_data"), type="character", default=NULL)
   )
@@ -63,76 +70,19 @@ main = function()
                         option_list = opt_list)
   opt <<- parse_args(parser)
   
-  opt <<- list(#input = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1/analysis/udp_replicates.tsv",
-    regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_redo/regions.tsv",
-    replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_redo/replicates.tsv",
-    out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_redo/analysis/batch1_redo.sarah.edit_dels.2bp_window.new_varcomp",
+  default_opts = list(
     minMapQ = 0,
     subsample = NULL,
     max_mismatch_frac = 0.05,
-    #viewing_window = 30, # window around the cut site for viewing
     viewing_window = 40,
-    editing_window = 1, # window around the cut site for counting deletions as edits
+    editing_window = 5, # window around the cut site for counting deletions as edits
     min_window_overlap = 30, # minimum number of read bases correctly aligned within the region of interest
     exclude_multiple_deletions = F,
     exclude_nonspanning_reads = T,
     exclude_nonspanning_deletions = T,
-    uns_plot_min_gDNA = 10,
-    uns_plot_min_cDNA = 0,
-    uns_plot_max_udps = 40,
-    no_allele_profile = F,
-    no_site_profile = F,
-    no_udp_profile = F,
-    no_uns_profile = F,
-    no_stats = F,
-    no_replicate_plots = T,
-    variance_analysis = T,
-    power_analysis = T,
-    variance_analysis_min_count = 100,
-    read_data = "analysis/batch1_redo.sarah.read_data.rds")
-  
-  opt <<- list(
-    regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1/regions.tsv",
-    replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1/replicates.tsv",
-    out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1/analysis/batch1.2bp_window.new",
-    minMapQ = 0,
-    subsample = NULL,
-    max_mismatch_frac = 0.05,
-    #viewing_window = 30, # window around the cut site for viewing
-    viewing_window = 40,
-    editing_window = 1, # window around the cut site for counting deletions as edits
-    min_window_overlap = 30, # minimum number of read bases correctly aligned within the region of interest
-    exclude_multiple_deletions = F,
-    exclude_nonspanning_reads = T,
-    exclude_nonspanning_deletions = T,
-    uns_plot_min_gDNA = 10,
-    uns_plot_min_cDNA = 0,
-    uns_plot_max_udps = 40,
-    no_allele_profile = F,
-    no_site_profile = F,
-    no_udp_profile = F,
-    no_uns_profile = F,
-    no_stats = F,
-    no_replicate_plots = T,
-    variance_analysis = F,
-    power_analysis = T,
-    variance_analysis_min_count = 100,
-    read_data = "analysis/batch1.read_data.new.rds")
-  
-  opt <<- list(#input = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1/analysis/udp_replicates.tsv",
-    regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1/regions.tsv",
-    replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_redo/batch1_combined.replicates.tsv",
-    out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_redo/analysis/batch1_combined.edit_dels.2bp_window",
-    minMapQ = 0,
-    subsample = NULL,
-    max_mismatch_frac = 0.05,
-    #viewing_window = 30, # window around the cut site for viewing
-    viewing_window = 40,
-    editing_window = 1, # window around the cut site for counting deletions as edits
-    min_window_overlap = 30, # minimum number of read bases correctly aligned within the region of interest
-    exclude_multiple_deletions = F,
-    exclude_nonspanning_reads = T,
-    exclude_nonspanning_deletions = T,
+    qc_plot_max_udps = 20,
+    qc_plot_min_udp_fraction = 0.002,
+    qc_plot_exclude_wt = T,
     uns_plot_min_gDNA = 10,
     uns_plot_min_cDNA = 0,
     uns_plot_max_udps = 40,
@@ -145,7 +95,40 @@ main = function()
     variance_analysis = F,
     power_analysis = F,
     variance_analysis_min_count = 100,
-    read_data = "analysis/batch1.combined.read_data.rds") 
+    variance_analysis_min_fraction = 0.001)
+  
+  # opt <<- default_opts
+  # opt$regions <<- "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_redo/regions.tsv"
+  # opt$replicates <<- "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_redo/replicates.tsv"
+  # opt$out <<- "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_redo/analysis/batch1_redo.sarah.edit_dels.2bp_window.new_varcomp"
+  # opt$variance_analysis <<- T
+  # opt$power_analysis <<- T
+  # opt$read_data <<- "analysis/batch1_redo.sarah.read_data.rds"
+  # 
+  # opt <<- default_opts
+  # opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1/regions.tsv"
+  # opt$replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1/replicates.tsv"
+  # opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1/analysis/batch1.2bp_window.new"
+  # opt$power_analysis = T
+  # opt$read_data = "analysis/batch1.read_data.new.rds"
+  # 
+  opt <<- default_opts
+  opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated/batch1_updated.regions.ref.tsv"
+  opt$replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated/batch1_updated.replicates.tsv"
+  opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated/analysis/batch1_updated.edit_dels.10bp_window"
+  opt$read_data = "analysis/batch1_updated.read_data.rds"
+  
+  opt <<- default_opts
+  opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/batch2.regions.amplicon.tsv"
+  opt$replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/batch2.replicates.amplicon.flash.tsv"
+  opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/analysis/batch2.edit_dels.10bp_window"
+  opt$read_data = "analysis/batch2.combined.flash.read_data.rds"
+  
+  # opt <<- default_opts
+  # opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_snp26_repeats/batch1_snp26_repeats.regions.tsv"
+  # opt$replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_snp26_repeats/batch1_snp26_repeats.replicates.tsv"
+  # opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_snp26_repeats/analysis/batch1_snp26_repeats"
+  # opt$read_data = "analysis/batch1_snp26_repeats.flash.read_data.rds"
   
   cat("All options:\n")
   printList(opt)
@@ -172,7 +155,7 @@ main = function()
   for (region_name in region_names) {
     df = replicates.df %>% dplyr::filter(name == region_name)
     if (any(duplicated(df$replicate))) {
-      stop("Region %s: not all replicates have distinct names. It will be impossible to distinguish results in output files that relate to specific replicates.")
+      stop(sprintf("Region %s: not all replicates have distinct names. It will be impossible to distinguish results in output files that relate to specific replicates.", region_name))
     }
   }
   
@@ -215,35 +198,6 @@ main = function()
     saveRDS(read_data_list, file=opt$read_data)
   }
   
-  settings.df = data.frame(minMapQ = opt$minMapQ,
-                           max_mismatch_frac = opt$max_mismatch_frac,
-                           viewing_window = opt$viewing_window, # window around the cut site for viewing
-                           editing_window = opt$editing_window, # window around the cut site for counting deletions as edits
-                           min_window_overlap = opt$min_window_overlap, # minimum number of read bases correctly aligned within the region of interest
-                           exclude_multiple_deletions = opt$exclude_multiple_deletions,
-                           exclude_nonspanning_reads = opt$exclude_nonspanning_reads,
-                           exclude_nonspanning_deletions = opt$exclude_nonspanning_deletions,
-                           uns_plot_min_gDNA = opt$uns_plot_min_gDNA,
-                           uns_plot_min_cDNA = opt$uns_plot_min_cDNA,
-                           uns_plot_max_udps = opt$uns_plot_max_udps)
-  settings.df = data.frame(setting=names(opt), value=as.character(opt)) %>%
-    filter(setting %in% c("minMapQ", "max_mismatch_frac", "viewing_window", "editing_window", "min_window_overlap",
-                          "exclude_multiple_deletions", "exclude_nonspanning_reads", "exclude_nonspanning_deletions",
-                          "uns_plot_min_gDNA", "uns_plot_min_cDNA", "uns_plot_max_udps"))
-  ggThemeBlank = theme_bw() + theme(panel.grid = element_blank(), axis.text = element_blank(), axis.title = element_blank(), axis.ticks = element_blank(), panel.border = element_blank())
-  myTableTheme <- gridExtra::ttheme_default(core = list(fg_params=list(cex = 0.8)),
-                                            colhead = list(fg_params=list(cex = 0.8)),
-                                            rowhead = list(fg_params=list(cex = 0.8)))
-  settingsPlot = ggplot(data.frame(x=1:10, y=1:10), aes(x,y)) + geom_blank() + ggThemeBlank +
-    annotation_custom(tableGrob(settings.df, theme = myTableTheme), xmin=1, xmax=9, ymin=1, ymax=9) +
-    ggtitle("CRISPR editing analysis settings")
-  
-  fname = sprintf("%s.plots.pdf", opt$out)
-  pdf(file = fname, width = 8, height = 7)
-  print(settingsPlot)
-  print(all_region_plots)
-  dev.off()
-  
   if (!opt$no_allele_profile) {
     df = bind_rows(lapply(all_results, function(res) res$wt_hdr.df))
     fname = sprintf("%s.mismatch_profile.tsv", opt$out)
@@ -268,10 +222,11 @@ main = function()
     fname = sprintf("%s.site_profiles.tsv", opt$out)
     write.table(df, fname, quote=F, row.names=F, col.names=T, na="", sep="\t")
   }
+  stats_plot = NULL
   if (!opt$no_stats) {
-    df = bind_rows(lapply(all_results, function(res) res$stats.df))
+    stats.df = bind_rows(lapply(all_results, function(res) res$stats.df))
     fname = sprintf("%s.replicate_stats.tsv", opt$out)
-    write.table(df, fname, quote=F, row.names=F, col.names=T, na="", sep="\t")
+    write.table(stats.df, fname, quote=F, row.names=F, col.names=T, na="", sep="\t")
     
     # Also write out a summary of stats per region, rather than per replicate
     #hdr_prop_error_pval = lapply(all_results, function(res) res$stats.df)
@@ -284,24 +239,108 @@ main = function()
       }
       if (is.null(l)) {NA} else {l}
     }
-    getBetaBinomialPval = function(res, field) {
-      x = res$stats.summary[[field]]
-      if (is.null(x)) {NA} else {summary(x)@Coef$`Pr(> |z|)`[2]}
-    }
     stats.summary.df = data.frame(
       name = region_names,
+      hdr.rate          = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "mean_hdr_rate"))),
+      del.rate          = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "mean_del_rate"))),
+      editing.rate      = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "mean_edit_rate"))),
       hdr.error_prop.pval      = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "hdr_wt.error_prop.res", "pval"))),
       hdr.error_prop.effect    = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "hdr_wt.error_prop.res", "effect"))),
       hdr.error_prop.effect_sd = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "hdr_wt.error_prop.res", "effect_sd"))),
       del.error_prop.pval      = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.error_prop.res", "pval"))),
       del.error_prop.effect    = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.error_prop.res", "effect"))),
       del.error_prop.effect_sd = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.error_prop.res", "effect_sd"))),
-      hdr.beta_bin.pval = sapply(all_results, FUN = getBetaBinomialPval, "hdr_wt.beta_binomial.res"),
-      del.beta_bin.pval = sapply(all_results, FUN = getBetaBinomialPval, "del_wt.beta_binomial.res")
+      del.2bp.error_prop.pval      = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.2bp.error_prop.res", "pval"))),
+      del.2bp.error_prop.effect    = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.2bp.error_prop.res", "effect"))),
+      del.2bp.error_prop.effect_sd = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.2bp.error_prop.res", "effect_sd"))),
+      del.10bp.error_prop.pval      = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.10bp.error_prop.res", "pval"))),
+      del.10bp.error_prop.effect    = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.10bp.error_prop.res", "effect"))),
+      del.10bp.error_prop.effect_sd = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.10bp.error_prop.res", "effect_sd"))),
+      del.20bp.error_prop.pval      = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.20bp.error_prop.res", "pval"))),
+      del.20bp.error_prop.effect    = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.20bp.error_prop.res", "effect"))),
+      del.20bp.error_prop.effect_sd = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.20bp.error_prop.res", "effect_sd")))
     )
     fname = sprintf("%s.region_stats.tsv", opt$out)
     write.table(stats.summary.df, fname, quote=F, row.names=F, col.names=T, sep="\t")
+    
+    stats_plot = statsSummaryPlot(stats.summary.df)
   }
+  
+  settings.df = data.frame(setting=names(opt), value=as.character(opt)) %>%
+    filter(setting %in% c("minMapQ", "max_mismatch_frac", "viewing_window", "editing_window", "min_window_overlap",
+                          "exclude_multiple_deletions", "exclude_nonspanning_reads", "exclude_nonspanning_deletions",
+                          "qc_plot_max_udps", "qc_plot_min_udp_fraction", "qc_plot_exclude_wt",
+                          "uns_plot_min_gDNA", "uns_plot_min_cDNA", "uns_plot_max_udps"))
+  ggThemeBlank = theme_bw() + theme(panel.grid = element_blank(), axis.text = element_blank(), axis.title = element_blank(), axis.ticks = element_blank(), panel.border = element_blank())
+  myTableTheme <- gridExtra::ttheme_default(core = list(fg_params=list(cex = 0.75)),
+                                            colhead = list(fg_params=list(cex = 0.8)),
+                                            rowhead = list(fg_params=list(cex = 0.8)))
+  settingsPlot = ggplot(data.frame(x=1:10, y=1:10), aes(x,y)) + geom_blank() + ggThemeBlank +
+    annotation_custom(tableGrob(settings.df, theme = myTableTheme), xmin=1, xmax=9, ymin=1, ymax=9) +
+    ggtitle("CRISPR editing analysis settings")
+  
+  fname = sprintf("%s.plots.pdf", opt$out)
+  pdf(file = fname, width = 8, height = 7)
+  print(settingsPlot)
+  if (!is.null(stats_plot)) { print(stats_plot) }
+  print(all_region_plots)
+  dev.off()
+}
+
+
+statsSummaryPlot = function(stats.summary.df) {
+  exp_names = sapply(stats.summary.df$name, FUN = function(s) strsplit(s, ",", T)[[1]][1])
+  stats.summary.df$name = factor(as.character(exp_names), levels=exp_names)
+  
+  getSignificanceStr = function(pval) {
+    if (is.na(pval) | pval >= 0.01) { "p >= 0.01" }
+    else if (pval < 0.001) { "p < 0.001" }
+    else { "p < 0.01" }
+  }
+  stats.summary.df$hdr_significance = factor(sapply(stats.summary.df$hdr.error_prop.pval, FUN = getSignificanceStr), levels=c("p >= 0.01", "p < 0.01", "p < 0.001"))
+
+  p.stats.hdr = ggplot(stats.summary.df, aes(x=name, y=hdr.error_prop.effect, fill=hdr_significance)) +
+    geom_bar(stat = "identity", width=0.5) + 
+    geom_errorbar(aes(ymin = hdr.error_prop.effect - 1.96*hdr.error_prop.effect_sd, ymax = hdr.error_prop.effect + 1.96*hdr.error_prop.effect_sd),
+                  width = 0.2, col = "grey30") +
+    geom_hline(yintercept = 1, col = "red") +
+    theme_bw(10) + theme(axis.text.x = element_blank(),
+                         legend.title = element_blank(),
+                         axis.title.x = element_blank(),
+                         plot.margin = unit(c(0.1, 0, 0.1 ,1), "cm")) +
+    ylab("HDR effect size") + ggtitle("HDR effect size") +
+    scale_fill_manual(values=c(`p >= 0.01`="grey70", `p < 0.01`="cornflowerblue", `p < 0.001`="red3")) +
+    coord_cartesian(ylim = c(0, min(2, max(stats.summary.df$hdr.error_prop.effect * 1.2, na.rm = T))))
+    
+  stats.summary.df$del_significance = factor(sapply(stats.summary.df$del.error_prop.pval, FUN = getSignificanceStr), levels=c("p >= 0.01", "p < 0.01", "p < 0.001"))
+  p.stats.del = ggplot(stats.summary.df, aes(x=name, y=del.error_prop.effect, fill=del_significance)) +
+    geom_bar(stat = "identity", width=0.5) + 
+    geom_errorbar(aes(ymin = del.error_prop.effect - 1.96*del.error_prop.effect_sd, ymax = del.error_prop.effect + 1.96*del.error_prop.effect_sd),
+                  width = 0.2, col = "grey30") +
+    geom_hline(yintercept = 1, col = "red") +
+    theme_bw(10) + theme(axis.text.x = element_blank(),
+                         legend.title = element_blank(),
+                         axis.title.x = element_blank(),
+                         plot.margin = unit(c(0.1, 0, 0.1 ,1), "cm")) +
+    ylab("Del effect size") + ggtitle("Deletion effect size") +
+    scale_fill_manual(values=c(`p >= 0.01`="grey70", `p < 0.01`="cornflowerblue", `p < 0.001`="red3")) +
+    coord_cartesian(ylim = c(0, min(3, max(stats.summary.df$del.error_prop.effect * 1.2, na.rm = T))))
+  
+  plot.df = stats.summary.df %>% dplyr::select(name, HDR=hdr.rate, NHEJ=del.rate) %>%
+    tidyr::gather(key = "type", value = "value", -name)
+  plot.df$type = factor(as.character(plot.df$type), levels = c("NHEJ", "HDR"))
+  p.stats.editing = ggplot(plot.df, aes(x=name, y=value*100, fill=type)) +
+    geom_bar(stat = "identity", position = position_stack(), width=0.5) + 
+    theme_bw(10) + theme(axis.text.x = element_text(angle = 37, hjust = 1, size=7),
+                         legend.title = element_blank(),
+                         axis.title.x = element_blank(),
+                         plot.margin = unit(c(0.1, 0, 0.1 ,1), "cm")) +
+    ylab("% editing") + ggtitle("Editing rates") +
+    scale_fill_manual(values=c(HDR="darkorange", NHEJ="cornflowerblue"))
+  
+  p.title = ggdraw() + draw_label("Experiment summary", fontface='bold')
+  p.res = egg::ggarrange(p.title, p.stats.hdr, p.stats.del, p.stats.editing, ncol=1, heights=c(1,3,3,3), draw = F)
+  p.res
 }
 
 
@@ -323,16 +362,16 @@ doFullDeletionAnalysis = function(region, replicates.df, read_data = NULL)
                cut_site = region$cut_site)
   rel_sites = getRelativeSites(sites, opt$viewing_window)
   for (i in 1:nrow(replicates.df)) {
-    result = doReplicateDeletionAnalysis(locus_name,
-                                         replicates.df[i,]$replicate,
-                                         replicates.df[i,]$type,
-                                         replicates.df[i,]$bam,
-                                         region$sequence_name,
-                                         sites,
-                                         region$hdr_allele_profile,
-                                         region$wt_allele_profile,
-                                         region$ref_sequence,
-                                         read_data)
+    result = doReplicateDeletionAnalysis(name = locus_name,
+                                         replicate = replicates.df[i,]$replicate,
+                                         type = replicates.df[i,]$type,
+                                         bam_file = replicates.df[i,]$bam,
+                                         sequence_name = region$sequence_name,
+                                         sites = sites,
+                                         hdr_profile = str_to_upper(region$hdr_allele_profile),
+                                         wt_profile = str_to_upper(region$wt_allele_profile),
+                                         ref_sequence = str_to_upper(region$ref_sequence),
+                                         read_data_all = read_data)
     result$name = locus_name
     result$replicate = replicates.df[i,]$replicate
     result$type = replicates.df[i,]$type
@@ -407,14 +446,15 @@ doFullDeletionAnalysis = function(region, replicates.df, read_data = NULL)
                             avg_mismatch_count = mean(avg_mismatch_count)) %>%
     arrange(-num_reads) %>% ungroup()
   
+  # Merged UDPs plot
   region_title = sprintf("%s merged replicates", region$name)
   p.udp_gDNA = getUDPPlot(merged.udp.df %>% dplyr::filter(type == "gDNA"), plot_title="gDNA", sites=rel_sites)
   p.udp_cDNA = getUDPPlot(merged.udp.df %>% dplyr::filter(type == "cDNA"), plot_title="cDNA", sites=rel_sites)
-  # now add the title
   p.title = ggdraw() + draw_label(region_title, fontface='bold')
   p.cDNA_gDNA = plot_grid(p.udp_gDNA, p.udp_cDNA, nrow=1)
   p.merged_UDP = plot_grid(p.title, p.cDNA_gDNA, ncol=1, rel_heights=c(0.1, 1)) # rel_heights values control title margins
   
+  # Deletion profiles plot - averaged + separate replicates
   p.merged_del_profile = getDeletionProfilePlot(replicate.udp.df,
                                                 rel_sites,
                                                 plot_title = "Merged replicates",
@@ -428,6 +468,15 @@ doFullDeletionAnalysis = function(region, replicates.df, read_data = NULL)
                                  p.merged_del_profile, p.replicate_del_profile, 
                                  ncol=1, heights=c(0.1, 0.5, 0.5), draw = F)
   
+  # Replicate QC using basic stats
+  p.replicate_qc.1 = getReplicateStatsPlot(stats_res$stats.df, region_title = region$name)
+  
+  # Replicate QC plot
+  p.replicate_qc.2 = getReplicateQCPlot(replicate.udp.df, region_title = region$name,
+                                        max_udps = opt$qc_plot_max_udps, min_avg_udp_fraction = opt$qc_plot_min_udp_fraction,
+                                        exclude_wt = opt$qc_plot_exclude_wt)
+  
+  # UNS plot
   p.merged_UNS = getUNSPlot(replicate.udp.df, rel_sites, plot_title = region_title,
                             min_gDNA_count = opt$uns_plot_min_gDNA, min_cDNA_count = opt$uns_plot_min_cDNA,
                             max_udps = opt$uns_plot_max_udps)
@@ -443,7 +492,9 @@ doFullDeletionAnalysis = function(region, replicates.df, read_data = NULL)
   
   p.variance_components = NULL
   if (opt$variance_analysis) {
-    p.variance_components = getVarianceComponentsPlots(replicate.udp.df, replicates.df, method = "read_fraction", min_udp_total_count = opt$variance_analysis_min_count)
+    p.variance_components = getVarianceComponentsPlots(replicate.udp.df, replicates.df, method = "read_fraction",
+                                                       min_udp_total_count = opt$variance_analysis_min_count,
+                                                       min_udp_fraction = opt$variance_analysis_min_fraction)
   }
   
   p.variance_fit = NULL
@@ -459,6 +510,8 @@ doFullDeletionAnalysis = function(region, replicates.df, read_data = NULL)
   plot_list = list(stats = stats_res$p.stats,
                    merged_udp = p.merged_UDP,
                    merged_del_profile = p.del_profile,
+                   replicate_qc_1 = p.replicate_qc.1,
+                   replicate_qc_2 = p.replicate_qc.2,
                    merged_UNS = p.merged_UNS,
                    variance_components = p.variance_components,
                    variance_fit = p.variance_fit,
@@ -488,22 +541,28 @@ doFullDeletionAnalysis = function(region, replicates.df, read_data = NULL)
 getFullReplicateStats = function(replicate_list) {
   stats.df = bind_rows(lapply(replicate_list, function(res) as.data.frame(res$stats)))
   stats.df$HDR_WT_ratio = (stats.df$num_hdr_reads / stats.df$num_wt_reads)
-  stats.df$HDR_rate = stats.df$num_hdr_reads / stats.df$num_reads
   stats.df$DEL_WT_ratio = (stats.df$num_deletion_reads / stats.df$num_wt_reads)
-  stats.df$DEL_rate = stats.df$num_deletion_reads / stats.df$num_reads
-  stats.df$editing_rate = stats.df$num_edit_reads / stats.df$num_reads
+  stats.df$HDR_rate = stats.df$num_hdr_reads / stats.df$num_kept_reads
+  stats.df$DEL_rate = stats.df$num_deletion_reads / stats.df$num_kept_reads
+  stats.df$editing_rate = stats.df$num_edit_reads / stats.df$num_kept_reads
   
   # Summary of stats from the propagation of errors method
   hdr_ratio_res = NULL
   del_ratio_res = NULL
-  if (sum(stats.df$type == "cDNA") < 2 | sum(stats.df$type == "gDNA") < 2) {
-    summary.method.prop = sprintf("Propagation of uncertainty\nUnable to calculate with < 2 replicates")
+  del_ratio_res_2bp = NULL
+  del_ratio_res_10bp = NULL
+  del_ratio_res_20bp = NULL
+  num_cDNA = sum(stats.df$type == "cDNA")
+  num_gDNA = sum(stats.df$type == "gDNA")
+  if (num_cDNA < 2 | num_gDNA < 2) {
+    summary.left.prop = sprintf("Propagation of uncertainty\nUnable to calculate with < 2 replicates")
+    summary.right.prop = ""
   } else {
     hdr_ratio_res = getHDRRatioEstimate(stats.df, colToCompare = "num_hdr_reads")
     hdr.conf.interval.str = sprintf("95%% CI: (%.3g, %.3g)",
                                     hdr_ratio_res$effect - 1.96*hdr_ratio_res$effect_sd,
                                     hdr_ratio_res$effect + 1.96*hdr_ratio_res$effect_sd)
-    hdr.summary.prop = sprintf("Propagation of uncertainty\ncDNA:gDNA ratio (HDR/WT): %.3g\n%s,    p = %.3g",
+    hdr.summary.prop = sprintf("cDNA:gDNA ratio (HDR/WT): %.3g\n%s,    p = %.3g",
                                hdr_ratio_res$effect, hdr.conf.interval.str, hdr_ratio_res$pval)
     
     del_ratio_res = getHDRRatioEstimate(stats.df, colToCompare = "num_deletion_reads")
@@ -512,65 +571,90 @@ getFullReplicateStats = function(replicate_list) {
                                     del_ratio_res$effect + 1.96*del_ratio_res$effect_sd)
     del.summary.prop = sprintf("cDNA:gDNA ratio (DEL/WT): %.3g\n%s,    p = %.3g",
                                del_ratio_res$effect, del.conf.interval.str, del_ratio_res$pval)
-    summary.method.prop = paste(hdr.summary.prop, del.summary.prop, sep = "\n")
+    summary.left.prop = paste(hdr.summary.prop, del.summary.prop, sep = "\n")
+    
+    del_ratio_res_2bp = getHDRRatioEstimate(stats.df, colToCompare = "num_deletions_2bp_window")
+    del.conf.interval.str = sprintf("95%% CI: (%.3g, %.3g)",
+                                    del_ratio_res_2bp$effect - 1.96*del_ratio_res_2bp$effect_sd,
+                                    del_ratio_res_2bp$effect + 1.96*del_ratio_res_2bp$effect_sd)
+    del.summary.prop_2bp = sprintf("cDNA:gDNA ratio (DEL/WT) - 2 bp span: %.3g\n%s,    p = %.3g",
+                                   del_ratio_res_2bp$effect, del.conf.interval.str, del_ratio_res_2bp$pval)
+    
+    del_ratio_res_10bp = getHDRRatioEstimate(stats.df, colToCompare = "num_deletions_10bp_window")
+    del.conf.interval.str = sprintf("95%% CI: (%.3g, %.3g)",
+                                    del_ratio_res_10bp$effect - 1.96*del_ratio_res_10bp$effect_sd,
+                                    del_ratio_res_10bp$effect + 1.96*del_ratio_res_10bp$effect_sd)
+    del.summary.prop_10bp = sprintf("cDNA:gDNA ratio (DEL/WT) - 10 bp span: %.3g\n%s,    p = %.3g",
+                                    del_ratio_res_10bp$effect, del.conf.interval.str, del_ratio_res_10bp$pval)
+    
+    del_ratio_res_20bp = getHDRRatioEstimate(stats.df, colToCompare = "num_deletions_20bp_window")
+    del.conf.interval.str = sprintf("95%% CI: (%.3g, %.3g)",
+                                    del_ratio_res_20bp$effect - 1.96*del_ratio_res_20bp$effect_sd,
+                                    del_ratio_res_20bp$effect + 1.96*del_ratio_res_20bp$effect_sd)
+    del.summary.prop_20bp = sprintf("cDNA:gDNA ratio (DEL/WT) - 20 bp span: %.3g\n%s,    p = %.3g",
+                                    del_ratio_res_20bp$effect, del.conf.interval.str, del_ratio_res_20bp$pval)
+    
+    summary.right.prop = paste(del.summary.prop_2bp, del.summary.prop_10bp, del.summary.prop_20bp, sep = "\n")
   }
   
   # Summary of stats from the beta binomial model method
-  fm1 = NULL
-  fm2 = NULL
-  if (sum(stats.df$type == "cDNA") < 1 | sum(stats.df$type == "gDNA") < 1) {
-    summary.method.betabin = sprintf("Beta binomial\nUnable to calculate\nOnly %d gDNA and %d cDNA replicates",
-                                     sum(stats.df$type == "gDNA"), sum(stats.df$type == "cDNA"))
-  } else {
-    test.df.hdr = stats.df %>%
-      dplyr::mutate(name = paste(name, replicate, type, sep="_"),
-                    is_cDNA = as.integer(type == "cDNA")) %>%
-      dplyr::select(name, is_cDNA, wt = num_wt_reads, hdr = num_hdr_reads)
-    #fm1 = betabin(cbind(hdr, wt) ~ is_cDNA, ~ 1, data = test.df[,2:4])
-    #test.df.hdr$is_cDNA[3] = T
-    betabin_warn_err = ""
-    res_hdr = tryCatch(fm1 <- betabin(cbind(hdr, wt) ~ is_cDNA, ~ 1, data = test.df.hdr[,2:4]),
-                       error = function(e) e, warning = function(w) w)
-    betabin_hdr_star = ""
-    if (is(res_hdr, "warning") | is(res_hdr, "error")) {
-      betabin_hdr_star = "**"
-      betabin_warn_err = paste(strwrap(paste("**", trimws(res_hdr$message)), width = 50), collapse = "\n")
-      if (is(res_hdr, "warning")) {
-        # When it's a warning it still produces output, but for some reason
-        # when we catch the exception the return value fm1 isn't assigned
-        fm1 <- betabin(cbind(hdr, wt) ~ is_cDNA, ~ 1, data = test.df.hdr[,2:4])
-      }
-    }
-    betabin_hdr_pval_str = "**"
-    if (!is.null(fm1)) {
-      betabin_hdr_pval_str = sprintf("%.3g%s", summary(fm1)@Coef$`Pr(> |z|)`[2], betabin_hdr_star)
-    }
-    
-    test.df.del = stats.df %>%
-      dplyr::mutate(name = paste(name, replicate, type, sep="_"),
-                    is_cDNA = as.integer(type == "cDNA")) %>%
-      dplyr::select(name, is_cDNA, wt = num_wt_reads, del = num_deletion_reads)
-    #fm2 = betabin(cbind(del, wt) ~ is_cDNA, ~ 1, data = test.df.del[,2:4])
-    res_del = tryCatch(fm2 <- betabin(cbind(del, wt) ~ is_cDNA, ~ 1, data = test.df.del[,2:4]),
-                       error = function(e) e, warning = function(w) w)
-    betabin_del_star = ""
-    if (is(res_del, "warning") | is(res_del, "error")) {
-      betabin_del_star = "**"
-      betabin_warn_err = paste("**", trimws(res_del$message))
-      if (is(res_del, "warning")) {
-        # When it's a warning it still produces output, but for some reason
-        # when we catch the exception the return value fm1 isn't assigned
-        fm2 <- betabin(cbind(del, wt) ~ is_cDNA, ~ 1, data = test.df.del[,2:4])
-      }
-    }
-    betabin_del_pval_str = "**"
-    if (!is.null(fm2)) {
-      betabin_del_pval_str = sprintf("%.3g%s", summary(fm2)@Coef$`Pr(> |z|)`[2], betabin_del_star)
-    }
-    
-    summary.method.betabin = sprintf("Beta binomial\ncDNA:gDNA ratio (HDR/WT): p = %s\ncDNA:gDNA ratio (DEL/WT): p = %s\n%s",
-                                     betabin_hdr_pval_str, betabin_del_pval_str, betabin_warn_err)
-  }
+  #### Currently we aren't doing this because the beta binomial method doesn't seem
+  #### to be reliable given the level of noise between replicates
+  # fm1 = NULL
+  # fm2 = NULL
+  # if (sum(stats.df$type == "cDNA") < 1 | sum(stats.df$type == "gDNA") < 1) {
+  #   summary.method.betabin = sprintf("Beta binomial\nUnable to calculate\nOnly %d gDNA and %d cDNA replicates",
+  #                                    sum(stats.df$type == "gDNA"), sum(stats.df$type == "cDNA"))
+  # } else {
+  #   test.df.hdr = stats.df %>%
+  #     dplyr::mutate(name = paste(name, replicate, type, sep="_"),
+  #                   is_cDNA = as.integer(type == "cDNA")) %>%
+  #     dplyr::select(name, is_cDNA, wt = num_wt_reads, hdr = num_hdr_reads)
+  #   #fm1 = betabin(cbind(hdr, wt) ~ is_cDNA, ~ 1, data = test.df[,2:4])
+  #   #test.df.hdr$is_cDNA[3] = T
+  #   betabin_warn_err = ""
+  #   res_hdr = tryCatch(fm1 <- betabin(cbind(hdr, wt) ~ is_cDNA, ~ 1, data = test.df.hdr[,2:4]),
+  #                      error = function(e) e, warning = function(w) w)
+  #   betabin_hdr_star = ""
+  #   if (is(res_hdr, "warning") | is(res_hdr, "error")) {
+  #     betabin_hdr_star = "**"
+  #     betabin_warn_err = paste(strwrap(paste("**", trimws(res_hdr$message)), width = 50), collapse = "\n")
+  #     if (is(res_hdr, "warning")) {
+  #       # When it's a warning it still produces output, but for some reason
+  #       # when we catch the exception the return value fm1 isn't assigned
+  #       fm1 <- betabin(cbind(hdr, wt) ~ is_cDNA, ~ 1, data = test.df.hdr[,2:4])
+  #     }
+  #   }
+  #   betabin_hdr_pval_str = "**"
+  #   if (!is.null(fm1)) {
+  #     betabin_hdr_pval_str = sprintf("%.3g%s", summary(fm1)@Coef$`Pr(> |z|)`[2], betabin_hdr_star)
+  #   }
+  #   
+  #   test.df.del = stats.df %>%
+  #     dplyr::mutate(name = paste(name, replicate, type, sep="_"),
+  #                   is_cDNA = as.integer(type == "cDNA")) %>%
+  #     dplyr::select(name, is_cDNA, wt = num_wt_reads, del = num_deletion_reads)
+  #   #fm2 = betabin(cbind(del, wt) ~ is_cDNA, ~ 1, data = test.df.del[,2:4])
+  #   res_del = tryCatch(fm2 <- betabin(cbind(del, wt) ~ is_cDNA, ~ 1, data = test.df.del[,2:4]),
+  #                      error = function(e) e, warning = function(w) w)
+  #   betabin_del_star = ""
+  #   if (is(res_del, "warning") | is(res_del, "error")) {
+  #     betabin_del_star = "**"
+  #     betabin_warn_err = paste("**", trimws(res_del$message))
+  #     if (is(res_del, "warning")) {
+  #       # When it's a warning it still produces output, but for some reason
+  #       # when we catch the exception the return value fm1 isn't assigned
+  #       fm2 <- betabin(cbind(del, wt) ~ is_cDNA, ~ 1, data = test.df.del[,2:4])
+  #     }
+  #   }
+  #   betabin_del_pval_str = "**"
+  #   if (!is.null(fm2)) {
+  #     betabin_del_pval_str = sprintf("%.3g%s", summary(fm2)@Coef$`Pr(> |z|)`[2], betabin_del_star)
+  #   }
+  #   
+  #   summary.method.betabin = sprintf("Beta binomial\ncDNA:gDNA ratio (HDR/WT): p = %s\ncDNA:gDNA ratio (DEL/WT): p = %s\n%s",
+  #                                    betabin_hdr_pval_str, betabin_del_pval_str, betabin_warn_err)
+  # }
   
   # Convert to strings for nice printing (with 3 significant digits)
   stats.plot.df = stats.df %>% dplyr::select(replicate, type, num_udps, HDR_WT_ratio, DEL_WT_ratio,
@@ -600,18 +684,27 @@ getFullReplicateStats = function(replicate_list) {
   p.stats = ggplot(data.frame(x=1:10, y=1:10), aes(x,y)) + geom_blank() + ggThemeBlank +
     annotation_custom(tableGrob(t(stats.plot.df), theme = myTableTheme), xmin=2, xmax=10, ymin=1, ymax=8) +
     annotate("text", x=5, y=10, label = sprintf("%s summary", stats.df$name[1]), vjust = 1, fontface = 2, size = 5) +
-    annotate("text", x=1, y=9.3, label = summary.method.prop, vjust = 1, hjust = 0, size = 3.5) +
-    annotate("text", x=9.5, y=9.3, label = summary.method.betabin, vjust = 1, hjust = 1, size = 3.5)
+    annotate("text", x=1, y=9.3, label = summary.left.prop, vjust = 1, hjust = 0, size = 3.1) +
+    annotate("text", x=9.5, y=9.3, label = summary.right.prop, vjust = 1, hjust = 1, size = 3.1)
   if (!opt$no_stats) {
     p.stats = p.stats + annotate("text", x=1, y=1, label = "Data saved in *.replicate_stats.tsv", vjust = 1, hjust = 0, size = 3)
   }
   
-  stats.summary = list(hdr_wt.beta_binomial.res = fm1,
+  stats.df$HDR_WT_ratio = (stats.df$num_hdr_reads / stats.df$num_wt_reads)
+  stats.df$DEL_WT_ratio = (stats.df$num_deletion_reads / stats.df$num_wt_reads)
+  stats.df$HDR_rate = stats.df$num_hdr_reads / stats.df$num_kept_reads
+  stats.df$DEL_rate = stats.df$num_deletion_reads / stats.df$num_kept_reads
+  stats.df$editing_rate = stats.df$num_edit_reads / stats.df$num_kept_reads
+  
+  stats.summary = list(mean_hdr_rate = mean(stats.df %>% dplyr::filter(type == "gDNA") %>% .$HDR_rate),
+                       mean_del_rate = mean(stats.df %>% dplyr::filter(type == "gDNA") %>% .$DEL_rate),
+                       mean_edit_rate = mean(stats.df %>% dplyr::filter(type == "gDNA") %>% .$editing_rate),
                        hdr_wt.error_prop.res = hdr_ratio_res,
-                       del_wt.beta_binomial.res = fm2,
                        del_wt.error_prop.res = del_ratio_res,
-                       error_prop.summary = summary.method.prop,
-                       beta_binomial.summary = summary.method.betabin)
+                       del_wt.2bp.error_prop.res = del_ratio_res_2bp,
+                       del_wt.10bp.error_prop.res = del_ratio_res_10bp,
+                       del_wt.20bp.error_prop.res = del_ratio_res_20bp,
+                       error_prop.summary = paste(summary.left.prop, summary.right.prop, sep = "\n"))
   
   result_list = list(p.stats = p.stats,
                      stats.df = stats.df,
@@ -658,9 +751,11 @@ doReplicateDeletionAnalysis = function(name, replicate, type, bam_file, sequence
   cat(sprintf("%d cDNA reads of %d total (%.1f%%) were soft-clipped\n", read_data$num_softclipped, read_data$num_reads, 100.0 * read_data$num_softclipped / read_data$num_reads))
   cat(sprintf("%d cDNA reads of %d total (%.1f%%) were hard-clipped\n", read_data$num_hardclipped, read_data$num_reads, 100.0 * read_data$num_hardclipped / read_data$num_reads))
   cat(sprintf("%d cDNA reads of %d total (%.1f%%) had insertions\n", read_data$num_insertion, read_data$num_reads, 100.0 * read_data$num_insertion / read_data$num_reads))
+  cat(sprintf("%d cDNA reads of %d total (%.1f%%) were likely primer dimers\n", read_data$num_primerdimer, read_data$num_reads, 100.0 * read_data$num_primerdimer / read_data$num_reads))
   stats$num_softclipped = read_data$num_softclipped
   stats$num_hardclipped = read_data$num_hardclipped
   stats$num_insertion = read_data$num_insertion
+  stats$num_primerdimer = read_data$num_primerdimer
   stats$num_reads = read_data$num_reads
   
   hdr_profile_chars = strsplit(hdr_profile, "")[[1]]
@@ -687,7 +782,7 @@ doReplicateDeletionAnalysis = function(name, replicate, type, bam_file, sequence
   reads.df$spanning_read = sapply(reads.df$region_read, FUN=function(s) (substring(s, span_site, span_site) != '-'))
   #reads.df$spanning_read = sapply(reads.df$read_chars, FUN=function(s) (s[span_site] != '-'))
   if (opt$exclude_nonspanning_reads) {
-    stats$reads_excluded_nonspanning = sum(!reads.df$spanning_read)
+    stats$reads_excluded_nonspanning = sum(!reads.df$spanning_read * reads.df$count)
     cat(sprintf("%d of %d reads (%.2f%%) excluded due to not spanning the site of interest (position %d)\n",
                 stats$reads_excluded_nonspanning, stats$num_reads, 100.0 * stats$reads_excluded_nonspanning / stats$num_reads,
                 span_site))
@@ -696,7 +791,7 @@ doReplicateDeletionAnalysis = function(name, replicate, type, bam_file, sequence
   
   # Exclude reads that don't cover enough of the region of interest
   exclude_for_overlap = (reads.df$seq_length < opt$min_window_overlap)
-  stats$reads_excluded_for_minoverlap = sum(exclude_for_overlap)
+  stats$reads_excluded_for_minoverlap = sum(exclude_for_overlap * reads.df$count)
   cat(sprintf("%d of %d reads (%.2f%%) excluded due to aligning to less than %d bp in the region of interest\n",
               stats$reads_excluded_for_minoverlap, stats$num_reads, 100.0 * stats$reads_excluded_for_minoverlap / stats$num_reads,
               opt$min_window_overlap))
@@ -727,15 +822,19 @@ doReplicateDeletionAnalysis = function(name, replicate, type, bam_file, sequence
       }
       return(udp)
     }
-    reads.df$udp[reads.df$has_any_deletion] = sapply(reads.df$udp[reads.df$has_any_deletion], updateUDPEdits, rel_cut_site, opt$editing_window)
+    if (sum(reads.df$has_any_deletion) > 0) {
+      reads.df$udp[reads.df$has_any_deletion] = sapply(reads.df$udp[reads.df$has_any_deletion], updateUDPEdits, rel_cut_site, opt$editing_window)
+    }
   } else {
     # Accept deletions anywhere in the read
     reads.df$has_crispr_deletion = reads.df$has_any_deletion
   }
   # Include deletions anywhere in the read
   reads.df$has_multiple_deletions = reads.df$has_any_deletion
-  reads.df$has_multiple_deletions[reads.df$has_multiple_deletions] = 
-    sapply(reads.df$udp[reads.df$has_multiple_deletions], FUN=function(s) grepl("[*]+[^*]+[*]+", s))
+  if (sum(reads.df$has_multiple_deletions) > 0) {
+    reads.df$has_multiple_deletions[reads.df$has_multiple_deletions] = 
+      sapply(reads.df$udp[reads.df$has_multiple_deletions], FUN=function(s) grepl("[*]+[^*]+[*]+", s))
+  }
   
   # Identify which reads are WT or HDR. Technically this only depends on the UDP
   # and not the entire read itself, but we compute it now so that we can accurately
@@ -744,12 +843,13 @@ doReplicateDeletionAnalysis = function(name, replicate, type, bam_file, sequence
   if (any(reads.df$is_wt_allele & reads.df$has_crispr_deletion)) {
     stop("ERROR: unexpected - found read classified as WT allele but having deletion")
   }
-  n_wt_vars = sum(wt_profile_chars != '-' & wt_profile_chars != ref_seq_chars)
+  # make sure we only count as WT those reads which actually cover the HDR site
+  reads.df$is_wt_allele[!reads.df$spanning_read] = NA
+  
+  n_wt_vars = sum(isDNALetter(wt_profile_chars) & wt_profile_chars != ref_seq_chars)
   if (n_wt_vars > 0) {
     reads.df$mismatch_count[reads.df$is_wt_allele] = reads.df$mismatch_count[reads.df$is_wt_allele] - n_wt_vars
   }
-  # make sure we only count as WT those reads which actually cover the HDR site
-  reads.df$is_wt_allele[!reads.df$spanning_read] = NA
   
   reads.df$is_hdr_allele = F
   if (hdr_profile != "") {
@@ -762,9 +862,13 @@ doReplicateDeletionAnalysis = function(name, replicate, type, bam_file, sequence
       stop("Error: HDR profile and WT profile should both indicate the expected sequence letters at the same positions")
     }
     reads.df$is_hdr_allele = (reads.df$udp == hdr_profile)
-    reads.df$is_hdr_allele = reads.df$is_hdr_allele & !reads.df$has_crispr_deletion
+    if (!any(hdr_profile_chars == "*")) {
+      # If the HDR profile doesn't have a deletion itself, then we don't expect any HDR alleles to have
+      # deletions near the CRISPR cut site
+      reads.df$is_hdr_allele = reads.df$is_hdr_allele & !reads.df$has_crispr_deletion
+    }
     # We don't want to count the HDR site itself as a mismatch
-    n_hdr_vars = sum(hdr_profile_chars != '-' & hdr_profile_chars != ref_seq_chars)
+    n_hdr_vars = sum(isDNALetter(hdr_profile_chars) & hdr_profile_chars != ref_seq_chars)
     if (n_hdr_vars > 0) {
       reads.df$mismatch_count[reads.df$is_hdr_allele] = reads.df$mismatch_count[reads.df$is_hdr_allele] - n_hdr_vars
     }
@@ -775,15 +879,31 @@ doReplicateDeletionAnalysis = function(name, replicate, type, bam_file, sequence
   
   # Exclude reads with too many mismatches
   exclude_for_mismatches = (reads.df$mismatch_count / reads.df$seq_length) > opt$max_mismatch_frac
-  stats$reads_excluded_for_mismatches = sum(exclude_for_mismatches)
+  stats$reads_excluded_for_mismatches = sum(exclude_for_mismatches * reads.df$count)
   cat(sprintf("%d of %d reads (%.2f%%) excluded due to having more than %.2f%% of the read being mismatches\n",
               stats$reads_excluded_for_mismatches, stats$num_reads, 100.0 * stats$reads_excluded_for_mismatches / stats$num_reads,
               opt$max_mismatch_frac * 100))
   reads.df = reads.df[!exclude_for_mismatches, ]
   
-  stats$num_wt_reads = sum(reads.df$is_wt_allele * reads.df$count, na.rm = T)
+  n_wt_reads = sum(reads.df$is_wt_allele * reads.df$count, na.rm = T)
+  if (n_wt_reads < 1) {
+    stop("ERROR: no wild-type reads found. Check the WT allele profile. You may also want to check that your reads span the edit site, give your read length and amplicon coords.")
+  } else if (n_wt_reads < 100) {
+    warning(sprintf("Warning: only %d wild-type reads found in experiment.", n_wt_reads))
+  }
+  
+  stats$num_wt_reads = n_wt_reads
   stats$num_hdr_reads = sum(reads.df$is_hdr_allele * reads.df$count, na.rm = T)
-  stats$num_deletion_reads = sum(reads.df$has_crispr_deletion * reads.df$count, na.rm = T)
+  stats$num_deletion_reads = sum((reads.df$has_crispr_deletion & !reads.df$is_hdr_allele) * reads.df$count, na.rm = T)
+  stats$num_kept_reads = sum(reads.df$count, na.rm = T)
+  
+  # Count deletion reads with different windows around the site of interest
+  has_deletion_2bp_window = grepl("[*]", substr(reads.df$udp, span_site - 1, span_site + 1))
+  has_deletion_10bp_window = grepl("[*]", substr(reads.df$udp, span_site - 5, span_site + 5))
+  has_deletion_20bp_window = grepl("[*]", substr(reads.df$udp, span_site - 10, span_site + 10))
+  stats$num_deletions_2bp_window = sum((has_deletion_2bp_window & !reads.df$is_hdr_allele) * reads.df$count, na.rm = T)
+  stats$num_deletions_10bp_window = sum((has_deletion_10bp_window & !reads.df$is_hdr_allele) * reads.df$count, na.rm = T)
+  stats$num_deletions_20bp_window = sum((has_deletion_20bp_window & !reads.df$is_hdr_allele) * reads.df$count, na.rm = T)
   
   # Aggregate reads according to their UDP
   udp.df = summarise(reads.df %>% group_by(udp),
@@ -914,11 +1034,13 @@ registerRead = function(relative_pos, sam_cigar, sam_read, region_length) {
   expanded_cigar = ""
   cigar_bits = ""
   cursor_read = 1
+  match_length = 0
   
   for (i in 1:length(sam_cigar_parsed$letters)) {
     type = sam_cigar_parsed$letters[i]
     
     if (type == 'M') {
+      match_length = match_length + sam_cigar_parsed$numbers[i]
       cigar_bits[i] = substr(sam_read, cursor_read, cursor_read + sam_cigar_parsed$numbers[i] - 1)
       #expanded_cigar = paste0(expanded_cigar, substr(sam_read, cursor_read, cursor_read + sam_cigar_parsed$numbers[i] - 1))
       cursor_read = cursor_read + sam_cigar_parsed$numbers[i]
@@ -964,7 +1086,7 @@ registerRead = function(relative_pos, sam_cigar, sam_read, region_length) {
     }
   }
   #print registered_read
-  return(list("read" = registered_read, "read_ok" = read_ok, "read_status" = read_status, "deletion" = read_contains_deletion))
+  return(list("read" = registered_read, "read_ok" = read_ok, "read_status" = read_status, "match_length" = match_length, "deletion" = read_contains_deletion))
 }
 
 # this function takes a string cigar "10M20D7M" and converts it to arrays of letters ['M','D','M'] and numbers [10,20,7]
@@ -1044,6 +1166,15 @@ getAlignedReads = function(sam_reads, ref_sequence, start, end) {
   num_softclipped = 0
   num_hardclipped = 0
   num_insertion = 0
+  
+  # As we go through the aligned reads we check for possible primer dimers
+  num_primerdimer = 0
+  primer_dimer_start = substr(ref_sequence, 1, 20)
+  primer_dimer_end = substr(ref_sequence, nchar(ref_sequence) - 19, nchar(ref_sequence))
+  isPrimerDimer = function(reg_read, match_length) {
+    (match_length < 40 & (substr(reg_read, 1, 20) == primer_dimer_start | substr(reg_read, nchar(reg_read) - 19, nchar(reg_read)) == primer_dimer_end))
+  }
+  
   for (i in 1:nrow(keptReads.df)) {
     # computes the read sequence within the coords of interest
     output = registerRead(keptReads.df$relative_pos[i], keptReads.df$sam_cigar[i], keptReads.df$seq[i], ref_seq_length)
@@ -1051,11 +1182,17 @@ getAlignedReads = function(sam_reads, ref_sequence, start, end) {
       alignedReads[i] = output$read
     }
     if (output$read_status == "hardclipped") {
-      num_hardclipped = num_hardclipped + 1
+      num_hardclipped = num_hardclipped + keptReads.df$count[i]
+      if (isPrimerDimer(output$read, output$match_length)) {
+        num_primerdimer = num_primerdimer + keptReads.df$count[i]
+      }
     } else if (output$read_status == "insertion") {
-      num_insertion = num_insertion + 1
+      num_insertion = num_insertion + keptReads.df$count[i]
     } else if (output$read_status == "softclipped") {
-      num_softclipped = num_softclipped + 1
+      num_softclipped = num_softclipped + keptReads.df$count[i]
+      if (isPrimerDimer(output$read, output$match_length)) {
+        num_primerdimer = num_primerdimer + keptReads.df$count[i]
+      }
     }
   }
   keptReads.df$region_read = alignedReads
@@ -1066,7 +1203,8 @@ getAlignedReads = function(sam_reads, ref_sequence, start, end) {
   
   return(list("alignedReads" = keptReads.df, "discardedReads" = discardedReads.df, "num_reads" = num_reads,
               "num_hardclipped" = num_hardclipped, "num_insertion" = num_insertion,
-              "num_softclipped" = num_softclipped, "num_outsidewindow" = num_outsidewindow))
+              "num_softclipped" = num_softclipped, "num_primerdimer" = num_primerdimer,
+              "num_outsidewindow" = num_outsidewindow))
 }
 
 
@@ -1226,6 +1364,139 @@ getDeletionProfilePlot = function(replicate.udp.df, sites, plot_title = NA, show
     p.gDNA_cDNA = p.gDNA_cDNA + geom_vline(xintercept = sites$cut_site, color="grey20", linetype = "longdash", alpha=0.5)
   }
   return(p.gDNA_cDNA)
+}
+
+
+getReplicateStatsPlot = function(stats.df, region_title) {
+  color_values = c(`cDNA`="firebrick1", `gDNA`="dodgerblue3")
+  p1 = ggplot(stats.df, aes(x=replicate, y=num_reads, fill=type)) +
+    geom_bar(stat = "identity", alpha = 0.8) +
+    geom_text(aes(label = sprintf("%d", num_reads)), size = 2.4, position = position_stack(vjust = 0.5)) +
+    theme_bw(10) + theme(axis.text.x = element_text(angle = 30, hjust = 1), legend.title=element_blank(), axis.title.x = element_blank()) +
+    scale_fill_manual(values = color_values) +
+    ylab("Number of reads") +
+    ggtitle("Number of reads")
+  
+  p2 = ggplot(stats.df, aes(x=replicate, y=num_udps, fill=type)) +
+    geom_bar(stat = "identity", alpha = 0.8) +
+    geom_text(aes(label = sprintf("%d", num_udps)), size = 2.4, position = position_stack(vjust = 0.5)) +
+    theme_bw(10) + theme(axis.text.x = element_text(angle = 30, hjust = 1), legend.title=element_blank(), axis.title.x = element_blank()) +
+    scale_fill_manual(values = color_values, guide=F) +
+    ylab("Number of UDPs") +
+    ggtitle("Number of UDPs")
+  
+  p3 = ggplot(stats.df, aes(x=replicate, y=HDR_WT_ratio, fill=type)) +
+    geom_bar(stat = "identity", alpha = 0.8) +
+    geom_text(aes(label = sprintf("%.3g", HDR_WT_ratio)), size = 2.4, position = position_stack(vjust = 0.5)) +
+    theme_bw(10) + theme(axis.text.x = element_text(angle = 30, hjust = 1), legend.title=element_blank(), axis.title.x = element_blank()) +
+    scale_fill_manual(values = color_values, guide=F) +
+    ylab("HDR:WT ratio") +
+    ggtitle("HDR:WT ratio")
+  
+  p4 = ggplot(stats.df, aes(x=replicate, y=DEL_WT_ratio, fill=type)) +
+    geom_bar(stat = "identity", alpha = 0.8) +
+    geom_text(aes(label = sprintf("%.3g", DEL_WT_ratio)), size = 2.4, position = position_stack(vjust = 0.5)) +
+    theme_bw(10) + theme(axis.text.x = element_text(angle = 30, hjust = 1), legend.title=element_blank()) +
+    scale_fill_manual(values = color_values, guide=F) +
+    ylab("Del:WT ratio") +
+    ggtitle("Deletion:WT ratio")
+  
+  p.title = ggdraw() + draw_label(sprintf("%s replicate QC", region_title), fontface='bold')
+  #p.replicate_qc = plot_grid(p.udp_fractions, p.udp_avg_deviation, ncol=1)
+  #p.res = plot_grid(p.title, p.replicate_qc, ncol=1, rel_heights=c(0.1, 1)) # rel_heights values control title margins
+  p.res = egg::ggarrange(p.title, p1, p2, p3, p4, ncol=1, heights=c(1,3,3,3,3), draw = F)
+  p.res
+}
+
+getReplicateQCPlot = function(replicate.udp.df, region_title, max_udps = 20, min_avg_udp_fraction = 0.005, exclude_wt = FALSE) {
+  # Here we generate a plot that shows, for each replicate, the UDP fraction
+  # for the top N UDPs across replicates. This should enable visually
+  # identifying outlier samples, based on the variability of the UDP fractions.
+  
+  # We need to have a value for each fo the top N UDPs. To do this,
+  # spread the replicates out into columns (cDNA_1, cDNA_2, etc.), with
+  # fill = 0 for when a replicate is missing, and then gather back.
+  getType = function(type_rep) { sapply(type_rep, FUN=function(x) strsplit(x, "^" , fixed=T)[[1]][1]) }
+  getReplicate = function(type_rep) { sapply(type_rep, FUN=function(x) strsplit(x, "^" , fixed=T)[[1]][2]) }
+  replicate.udp.filled.df = replicate.udp.df %>%
+    dplyr::mutate(type_replicate = paste(type, replicate, sep="^")) %>%
+    dplyr::select(udp, type_replicate, is_wt_allele, num_reads) %>%
+    tidyr::spread(type_replicate, num_reads, fill = 0) %>%
+    tidyr::gather(key="type_replicate", value="num_reads", -udp, -is_wt_allele) %>%
+    dplyr::mutate(type = getType(type_replicate),
+                  replicate = getReplicate(type_replicate)) %>%
+    dplyr::select(udp, type, is_wt_allele, replicate, num_reads)
+  
+  replicate.totalreads.df = replicate.udp.df %>%
+    dplyr::group_by(replicate) %>%
+    dplyr::summarise(replicate_total_reads = sum(num_reads))
+  udp.totalreads.df = replicate.udp.df %>%
+    dplyr::group_by(udp) %>%
+    dplyr::summarise(udp_total_reads = sum(num_reads),
+                     udp_reads_gDNA = sum(num_reads[type == "gDNA"]),
+                     udp_reads_cDNA = sum(num_reads[type == "cDNA"]),
+                     is_wt_allele = first(is_wt_allele)) %>%
+    dplyr::arrange(-udp_total_reads)
+  
+  if (exclude_wt) {
+    replicate.udp.filled.df = replicate.udp.filled.df %>% dplyr::filter(!is_wt_allele)
+    udp.totalreads.df = udp.totalreads.df %>% dplyr::filter(!is_wt_allele)
+  }
+  
+  if (max_udps < nrow(udp.totalreads.df)) {
+    udp.totalreads.df = udp.totalreads.df[1:max_udps,]
+  }
+  
+  replicate.udp.filled.df = replicate.udp.filled.df %>%
+    dplyr::inner_join(udp.totalreads.df, by = "udp") %>%
+    dplyr::left_join(replicate.totalreads.df, by="replicate") %>%
+    dplyr::mutate(udp_fraction = num_reads / replicate_total_reads) %>%
+    dplyr::arrange(-udp_total_reads)
+  udp.avg.fractions = replicate.udp.filled.df %>%
+    dplyr::group_by(udp) %>%
+    dplyr::summarise(avg_udp_fraction = mean(udp_fraction))
+  replicate.udp.filled.df = replicate.udp.filled.df %>%
+    dplyr::left_join(udp.avg.fractions, by = "udp") %>%
+    dplyr::filter(avg_udp_fraction >= min_avg_udp_fraction)
+  
+  num_udps = length(unique(replicate.udp.filled.df$udp))
+  replicate.udp.filled.df$udp = factor(replicate.udp.filled.df$udp, levels=unique(replicate.udp.filled.df$udp))
+  replicate.udp.filled.df$udp_id = factor(as.integer(replicate.udp.filled.df$udp))
+  
+  color_values = c(`cDNA`="firebrick1", `gDNA`="dodgerblue3")
+  shapes = c(16,17,15,3,12,8,6,5,0,1,11,10,18,7,9,2,3,4,13,14)
+  num_gDNA_reps = length(unique(replicate.udp.filled.df %>% dplyr::filter(type == "gDNA") %>% .$replicate))
+  num_cDNA_reps = length(unique(replicate.udp.filled.df %>% dplyr::filter(type == "cDNA") %>% .$replicate))
+  shape_values = c(shapes[1:min(20, num_cDNA_reps)], shapes[1:min(20, num_gDNA_reps)])
+  p.udp_fractions = ggplot(replicate.udp.filled.df, aes(x=udp_id, y=udp_fraction, group=replicate, col=type, shape=replicate)) +
+    geom_line() + geom_point(size=3, alpha=0.5) +
+    scale_color_manual(values = color_values, guide = F) +
+    scale_shape_manual(values = shape_values) +
+    theme_bw() + xlab("UDP") + ylab("UDP fraction") +
+    ggtitle(sprintf("UDP fractions (min %.2g%%, %d UDPs)", min_avg_udp_fraction*100, num_udps))
+  
+  # Compute a statistic which, for each replicate, is the mean deviation
+  # of the replicate's UDP fractions from the mean UDP fractions across
+  # replicates. This is easy to do if we use the mean UDP fraction across
+  # all replicates, but harder if we want to use the mean across all
+  # replicates *except* the focal one. First do it the easy way.
+  replicate.udp_avg_deviation.df = replicate.udp.filled.df %>%
+    dplyr::group_by(replicate) %>%
+    dplyr::summarise(avg_deviation = mean(abs(udp_fraction - avg_udp_fraction)),
+                     type = first(type))
+  p.udp_avg_deviation = ggplot(replicate.udp_avg_deviation.df, aes(x=replicate, y=avg_deviation, fill=type)) +
+    geom_bar(stat = "identity", alpha = 0.8) +
+    geom_text(aes(label = sprintf("%.2g%%", avg_deviation*100)), size = 2.4, position = position_stack(vjust = 0.5)) +
+    theme_bw() + theme(axis.text.x = element_text(angle = 30, hjust = 1), legend.title=element_blank()) +
+    scale_fill_manual(values = color_values) +
+    ylab("Mean UDP fraction deviation") +
+    ggtitle("Mean UDP fraction deviation")
+  
+  p.title = ggdraw() + draw_label(sprintf("%s replicate QC", region_title), fontface='bold')
+  #p.replicate_qc = plot_grid(p.udp_fractions, p.udp_avg_deviation, ncol=1)
+  #p.res = plot_grid(p.title, p.replicate_qc, ncol=1, rel_heights=c(0.1, 1)) # rel_heights values control title margins
+  p.res = egg::ggarrange(p.title, p.udp_fractions, p.udp_avg_deviation, ncol=1, heights=c(1,4,4), draw = F)
+  p.res
 }
 
 
@@ -1400,7 +1671,7 @@ getUNSPlot = function(replicate.udp.df, sites, plot_title, min_gDNA_count = 10, 
                        axis.line = element_blank(),
                        panel.border = element_blank(),
                        panel.grid = element_blank(),
-                       plot.margin = unit(c(0,0,0,0), "cm"))
+                       plot.margin = unit(c(0,0,0.05,0), "cm"))
   
   numBases = sites$end - sites$start + 1
   dash_size = 2
@@ -1428,7 +1699,7 @@ getUNSPlot = function(replicate.udp.df, sites, plot_title, min_gDNA_count = 10, 
                        axis.ticks.y = element_blank(),
                        axis.line = element_blank(),
                        panel.border = element_blank(),
-                       plot.margin = unit(c(0,0,0,0), "cm"))
+                       plot.margin = unit(c(0,0,0.05,0), "cm"))
   
   if (!is.na(sites$cut_site)) {
     p.udp = p.udp + geom_vline(xintercept = sites$cut_site, color="grey20", linetype = "longdash", alpha=0.5)
@@ -1493,7 +1764,7 @@ getUNSPlot = function(replicate.udp.df, sites, plot_title, min_gDNA_count = 10, 
     theme_bw() + theme(legend.position = "right",
                        #axis.line = element_blank(),
                        panel.border = element_blank(),
-                       plot.margin = unit(c(0,0,0,0), "cm"))
+                       plot.margin = unit(c(0,0,0.05,0), "cm"))
   
   p.udp_profile = egg::ggarrange(p.dendro, p.udp, p.uns, nrow=1, ncol=3, widths=c(1,4,1), top = plot_title, draw = F)
   #p.udp_profile = plot_grid(p.uns, p.udp, p.dendro, nrow=1, ncol=3, rel_widths = c(2,4,1))
@@ -1506,7 +1777,7 @@ fitVarianceComponents = function(replicate.udp.spread.df, replicates.type.df) {
   rownames(replicate.udp.spread.df) = replicate.udp.spread.df$udp
   
   # Get all columns of the replicate dataframe which begin with "replicate"
-  replicate_cols = colnames(replicates.df)[grepl("^replicate_", colnames(replicates.df))]
+  replicate_cols = colnames(replicates.type.df)[grepl("^replicate_", colnames(replicates.type.df))]
   for (col in replicate_cols) {
     replicates.type.df[, col] = as.factor(replicates.type.df[, col, drop=T])
   }
@@ -1517,7 +1788,10 @@ fitVarianceComponents = function(replicate.udp.spread.df, replicates.type.df) {
   for (col in replicate_cols[-1]) {
     formulaStr = sprintf("%s + (1|%s)", formulaStr, col)
   }
-  vp <- fitExtractVarPartModel(replicate.udp.spread.df %>% dplyr::select(-udp), as.formula(formulaStr), replicates.type.df)
+  vp <- fitExtractVarPartModel(exprObj = replicate.udp.spread.df %>% dplyr::select(-udp),
+                               formula = as.formula(formulaStr),
+                               data = replicates.type.df,
+                               useWeights = F)
   #View(data.frame(vp))
   vp
 }
@@ -1548,7 +1822,7 @@ doVariancePartitionPlot = function(vp, residuals=T, color = NA) {
     geom_jitter(width = 0.2, alpha = 0.6, mapping = aes(color = "black")) +
     theme_bw() +
     theme(legend.position="none") + 
-    theme(axis.text.x=element_text(angle=0), axis.title.x=element_blank(), panel.grid=element_blank()) +
+    theme(axis.text.x=element_text(angle=20, hjust = 1), axis.title.x=element_blank(), panel.grid=element_blank()) +
     ylab("Variance explained (%)") +
     scale_fill_manual(values = c("gray95"))
   #  scale_fill_manual(values = c(gg_color_hue(numVariables-1), "gray85"))
@@ -1558,13 +1832,13 @@ doVariancePartitionPlot = function(vp, residuals=T, color = NA) {
   return(p)
 }
 
-getVarianceComponentsPlots = function(replicate.udp.df, replicates.df, method = "read_fraction", min_udp_total_count = 100) {
+getVarianceComponentsPlots = function(replicate.udp.df, replicates.df, method = "read_fraction", min_udp_total_count = 100, min_udp_fraction = 0.001) {
   replicate_cols = colnames(replicates.df)[grepl("^replicate_", colnames(replicates.df))]
   if (length(replicate_cols) < 1) {
     stop("--variance_analysis option given but no columns beginning with 'replicate_' found in the --replicates file")
   }
   
-  filterUDPs = function(udp.df, min_udp_total_count) {
+  filterUDPs = function(udp.df, min_udp_total_count, min_udp_fraction) {
     # Spread the replicates out into columns (cDNA_1, cDNA_2, etc.), with
     # fill = 0 for when a replicate has no value for a given UDP, then
     # gather again.
@@ -1572,11 +1846,12 @@ getVarianceComponentsPlots = function(replicate.udp.df, replicates.df, method = 
       dplyr::select(udp, type, replicate, num_reads) %>%
       tidyr::spread(replicate, num_reads, fill = 0) %>%
       tidyr::gather(key="replicate", value="num_reads", -udp, -type)
+    totalReads = sum(udp.filled.df$num_reads)
     udp.summary = udp.filled.df %>% group_by(udp, type) %>%
-      dplyr::summarise(sum = sum(num_reads))
+      dplyr::summarise(sum = sum(num_reads), frac = sum / totalReads)
     
     # Remove UDPs with too few total reads
-    udp.filled.df %>% dplyr::inner_join(udp.summary %>% dplyr::filter(sum >= min_udp_total_count), by=c("udp", "type"))
+    udp.filled.df %>% dplyr::inner_join(udp.summary %>% dplyr::filter(sum >= min_udp_total_count, frac > min_udp_fraction), by=c("udp", "type"))
   }
   
   # This function returns a value based on the "num_reads" for each replicate,
@@ -1614,7 +1889,8 @@ getVarianceComponentsPlots = function(replicate.udp.df, replicates.df, method = 
   
   #########################################################################
   dnaType = "cDNA"
-  replicate.udp.cDNA.df = filterUDPs(replicate.udp.df %>% dplyr::filter(type == dnaType), min_udp_total_count)
+  replicate.udp.cDNA.df = filterUDPs(replicate.udp.df %>% dplyr::filter(type == dnaType),
+                                     min_udp_total_count = min_udp_total_count, min_udp_fraction = min_udp_fraction)
   
   replicate.udp.cDNA.df$value = getValueForVariance(replicate.udp.cDNA.df, method)
   
@@ -1623,23 +1899,35 @@ getVarianceComponentsPlots = function(replicate.udp.df, replicates.df, method = 
   replicate.udp.cDNA.spread.df = replicate.udp.cDNA.df %>%
     dplyr::select(udp, replicate, value) %>%
     tidyr::spread(replicate, value, fill = 0)
-  vp = fitVarianceComponents(replicate.udp.cDNA.spread.df,
+  udpFraction = rowMeans(replicate.udp.cDNA.spread.df %>% dplyr::select(-udp))
+  #print(sprintf("Variance components: fraction of cDNA reads in UDPs > 0.1%% prevalence = %.3g", sum(udpFraction[udpFraction > 0.001])))
+  vp = fitVarianceComponents(replicate.udp.cDNA.spread.df[udpFraction > 0.001,],
                              replicates.df %>% dplyr::filter(type == dnaType))
   vp.cDNA.df = data.frame(vp)
+  # value_avg.df = replicate.udp.cDNA.df %>% group_by(udp) %>% dplyr::summarise(value_avg = mean(value))
+  # vp.cDNA.df$udp = rownames(vp)
+  # vp.cDNA.df = vp.cDNA.df %>% dplyr::left_join(value_avg.df, by="udp")
   p.cDNA = doVariancePartitionPlot(vp, color="red") + ggtitle(dnaType)
   
   #########################################################################
   # Do the same for gDNA
   dnaType = "gDNA"
-  replicate.udp.gDNA.df = filterUDPs(replicate.udp.df %>% dplyr::filter(type == dnaType), min_udp_total_count)
+  replicate.udp.gDNA.df = filterUDPs(replicate.udp.df %>% dplyr::filter(type == dnaType),
+                                     min_udp_total_count = min_udp_total_count, min_udp_fraction = min_udp_fraction)
   replicate.udp.gDNA.df$value = getValueForVariance(replicate.udp.gDNA.df, method)
   
   replicate.udp.gDNA.spread.df = replicate.udp.gDNA.df %>%
     dplyr::select(udp, replicate, value) %>%
     tidyr::spread(replicate, value, fill = 0)
-  vp = fitVarianceComponents(replicate.udp.gDNA.spread.df,
+  udpFraction = rowMeans(replicate.udp.gDNA.spread.df %>% dplyr::select(-udp))
+  #print(sprintf("Variance components: fraction of gDNA reads in UDPs > 0.1%% prevalence = %.3g", sum(udpFraction[udpFraction > 0.001])))
+  vp = fitVarianceComponents(replicate.udp.gDNA.spread.df[udpFraction > 0.001,],
                              replicates.df %>% dplyr::filter(type == dnaType))
+  
   vp.gDNA.df = data.frame(vp)
+  # value_avg.df = replicate.udp.gDNA.df %>% group_by(udp) %>% dplyr::summarise(value_avg = mean(value))
+  # vp.gDNA.df$udp = rownames(vp)
+  # vp.gDNA.df = vp.gDNA.df %>% dplyr::left_join(value_avg.df, by="udp") %>% dplyr::select(-udp)
   p.gDNA = doVariancePartitionPlot(vp, color="blue") + ggtitle(dnaType)
   
   cDNA.summary.df = variancePartitionSummaryTable(vp.cDNA.df)
@@ -1659,9 +1947,9 @@ getVarianceComponentsPlots = function(replicate.udp.df, replicates.df, method = 
     # annotate("text", x=7.5, y=8, label = "gDNA", hjust = 0.5, fontface = 2, size = 5) +
     annotate("text", x=5, y=10, label = sprintf("%s variance components", replicates.df$name[1]), vjust = 1, fontface = 2, size = 5) +
     annotate("text", x=5, y=9, label = sprintf("Method = %s", method), vjust = 1, size = 3) +
-    annotate("text", x=1.5, y=1, label = sprintf("Based on %d UDPs with read count > %d", nrow(vp.cDNA.df), min_udp_total_count),
+    annotate("text", x=1, y=1, label = sprintf("Based on %d UDPs with >%d reads, >%.1g%% udp fraction", nrow(vp.cDNA.df), min_udp_total_count, min_udp_fraction*100),
              hjust = 0, vjust = 0, size = 3) +
-    annotate("text", x=6.5, y=1, label = sprintf("Based on %d UDPs with read count > %d", nrow(vp.gDNA.df), min_udp_total_count),
+    annotate("text", x=6, y=1, label = sprintf("Based on %d UDPs with >%d reads, >%.1g%% udp fraction", nrow(vp.gDNA.df), min_udp_total_count, min_udp_fraction*100),
              hjust = 0, vjust = 0, size = 3)
   
   #egg::ggarrange(p.stats, grid.arrange(p.cDNA, p.gDNA, ncol=2), nrow = 1)
