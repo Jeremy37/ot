@@ -10,7 +10,7 @@ colocs.df = readr::read_tsv(file.path(coloc_root, "output", "coloc.AD.meta.eqtl_
   dplyr::filter(!grepl("mac_txrevise", dataset_short))
 
 mg.colocs.df = colocs.df %>% dplyr::filter(dataset_short == "microglia") %>% dplyr::arrange(locus, -H4) %>%
-  dplyr::select(feature, nsnps, chr, gwas_pos, qtl_pval, gwas_pval, qtl_lead, gwas_snp, H4, geneSymbol, locus_name)
+  dplyr::select(feature, nsnps, chr, gwas_pos, qtl_pval, gwas_pval, qtl_lead, H4, geneSymbol, locus_name)
 #View(mg.colocs.df)
 mg.sig_colocs.df = mg.colocs.df %>% dplyr::filter(H4 >= 0.9)
 mg.top_colocs.df = mg.colocs.df %>% dplyr::filter(H4 >= 0.5, !duplicated(locus_name))
@@ -50,49 +50,50 @@ labelDatasets = c("microglia", "mono_eQTL", "xQTL_eQTL", "mac_eqtl_naive", "mac_
                   "gtex.brain_cereb", "gtex.brain_hippo", "gtex.brain_cortex", "gtex.nerve_tibial", "gtex.cells_lcl")
 labels.df = plot.df %>% dplyr::filter(dataset_short %in% labelDatasets)
 
+fontSize = 12
 pdf(file = file.path(coloc_root, "AD.coloc.comparison.pdf"), width = 7, height = 5)
 
 ###############################################################################
 # Look at the number of colocs at different thresholds vs. the number of
 # eGenes or tests across each dataset
-ggplot(plot.df, aes(x=num_egenes, y=num_coloc_tests, label=dataset_short, col=color)) + geom_point() + theme_bw() +
+ggplot(plot.df, aes(x=num_egenes, y=num_coloc_tests, label=dataset_short, col=color)) + geom_point() + theme_bw(fontSize) +
   geom_text(mapping = aes(size=size, col=text_color), data = labels.df, hjust=0, vjust=1) +
   scale_size_manual(values=c(3, 5), guide=F) + scale_color_manual(values=c("black", "blue", "grey40"), guide=F) + scale_x_continuous(expand=c(0.1, 0)) +
   ggtitle("Num coloc tests vs. Num eGenes") +
   ylab("Num coloc tests") + xlab("Num eGenes")
 
-ggplot(plot.df, aes(x=num_egenes, y=num_colocs0.5, label=dataset_short, col=color)) + geom_point() + theme_bw() +
+ggplot(plot.df, aes(x=num_egenes, y=num_colocs0.5, label=dataset_short, col=color)) + geom_point() + theme_bw(fontSize) +
   geom_text(mapping = aes(size=size, col=text_color), data = labels.df, hjust=0, vjust=1) +
   scale_size_manual(values=c(3, 5), guide=F) + scale_color_manual(values=c("black", "blue", "grey40"), guide=F) + scale_x_continuous(expand=c(0.1, 0)) +
   ggtitle("Num colocs H4 > 0.5 vs. Num eGenes") +
   ylab("Num colocs H4 > 0.5") + xlab("Num eGenes")
 
-ggplot(plot.df, aes(x=num_egenes, y=num_colocs0.9, label=dataset_short, col=color)) + geom_point() + theme_bw() +
+ggplot(plot.df, aes(x=num_egenes, y=num_colocs0.9, label=dataset_short, col=color)) + geom_point() + theme_bw(fontSize) +
   geom_text(mapping = aes(size=size, col=text_color), data = labels.df, hjust=0, vjust=1) +
   scale_size_manual(values=c(3, 5), guide=F) + scale_color_manual(values=c("black", "blue", "grey40"), guide=F) + scale_x_continuous(expand=c(0.1, 0)) +
   ggtitle("Num colocs H4 > 0.9 vs. Num eGenes") +
   ylab("Num colocs H4 > 0.9") + xlab("Num eGenes")
 
-ggplot(plot.df, aes(x=num_coloc_tests, y=num_colocs0.5, label=dataset_short, col=color)) + geom_point() + theme_bw() +
+ggplot(plot.df, aes(x=num_coloc_tests, y=num_colocs0.5, label=dataset_short, col=color)) + geom_point() + theme_bw(fontSize) +
   geom_text(mapping = aes(size=size, col=text_color), data = labels.df, hjust=0, vjust=1) +
   scale_size_manual(values=c(3, 5), guide=F) + scale_color_manual(values=c("black", "blue", "grey40"), guide=F) + scale_x_continuous(expand=c(0.1, 0)) +
   ggtitle("Num colocs H4 > 0.5 vs. Num coloc tests") +
   ylab("Num colocs H4 > 0.5") + xlab("Num coloc tests")
 
-ggplot(plot.df, aes(x=num_coloc_tests, y=num_colocs0.9, label=dataset_short, col=color)) + geom_point() + theme_bw() +
+ggplot(plot.df, aes(x=num_coloc_tests, y=num_colocs0.9, label=dataset_short, col=color)) + geom_point() + theme_bw(fontSize) +
   geom_text(mapping = aes(size=size, col=text_color), data = labels.df, hjust=0, vjust=1) +
   scale_size_manual(values=c(3, 5), guide=F) + scale_color_manual(values=c("black", "blue", "grey40"), guide=F) + scale_x_continuous(expand=c(0.1, 0)) +
   ggtitle("Num colocs H4 > 0.9 vs. Num coloc tests") +
   ylab("Num colocs H4 > 0.9") + xlab("Num coloc tests")
 
 
-ggplot(plot.df, aes(x=num_PP3gt0.5, y=num_colocs0.5, label=dataset_short, col=color)) + geom_point() + theme_bw() +
+ggplot(plot.df, aes(x=num_PP3gt0.5, y=num_colocs0.5, label=dataset_short, col=color)) + geom_point() + theme_bw(fontSize) +
   geom_text(mapping = aes(size=size, col=text_color), data = labels.df, hjust=0, vjust=1) +
   scale_size_manual(values=c(3, 5), guide=F) + scale_color_manual(values=c("black", "blue", "grey40"), guide=F) + scale_x_continuous(expand=c(0.1, 0)) +
   ggtitle("Num colocs H4 > 0.5 vs. Num indep H3 > 0.5") +
   ylab("Num colocs H4 > 0.5") + xlab("Num indep H3 > 0.5")
 
-ggplot(plot.df, aes(x=num_PP3gt0.9, y=num_colocs0.9, label=dataset_short, col=color)) + geom_point() + theme_bw() +
+ggplot(plot.df, aes(x=num_PP3gt0.9, y=num_colocs0.9, label=dataset_short, col=color)) + geom_point() + theme_bw(fontSize) +
   geom_text(mapping = aes(size=size, col=text_color), data = labels.df, hjust=0, vjust=1) +
   scale_size_manual(values=c(3, 5), guide=F) + scale_color_manual(values=c("black", "blue", "grey40"), guide=F) + scale_x_continuous(expand=c(0.1, 0)) +
   ggtitle("Num colocs H4 > 0.9 vs. Num indep H3 > 0.9") +
@@ -117,49 +118,49 @@ labelDatasets = c("microglia", "mono_eQTL", "xQTL_eQTL", "mac_eqtl_naive", "mac_
                   "gtex.brain_cereb", "gtex.brain_hippo", "gtex.brain_cortex", "gtex.nerve_tibial", "gtex.cells_lcl")
 labels.df = plot.df %>% dplyr::filter(dataset_short %in% labelDatasets)
 
-ggplot(plot.df, aes(x=num_egenes, y=num_loci_with_egene, label=dataset_short, col=color)) + geom_point() + theme_bw() +
+ggplot(plot.df, aes(x=num_egenes, y=num_loci_with_egene, label=dataset_short, col=color)) + geom_point() + theme_bw(fontSize) +
   geom_text(mapping = aes(size=size, col=text_color), data = labels.df, hjust=0, vjust=1) +
   scale_size_manual(values=c(3, 5), guide=F) + scale_color_manual(values=c("black", "blue", "grey40"), guide=F) + scale_x_continuous(expand=c(0.1, 0)) +
   ggtitle("Num AD loci with an eGene vs. Num eGenes") +
   ylab("Num AD loci with an eGene") + xlab("Num eGenes")
 
-ggplot(plot.df, aes(x=num_coloc_tests, y=num_loci_with_egene, label=dataset_short, col=color)) + geom_point() + theme_bw() +
+ggplot(plot.df, aes(x=num_coloc_tests, y=num_loci_with_egene, label=dataset_short, col=color)) + geom_point() + theme_bw(fontSize) +
   geom_text(mapping = aes(size=size, col=text_color), data = labels.df, hjust=0, vjust=1) +
   scale_size_manual(values=c(3, 5), guide=F) + scale_color_manual(values=c("black", "blue", "grey40"), guide=F) + scale_x_continuous(expand=c(0.1, 0)) +
   ggtitle("Num AD loci with an eGene vs. Num colocs tests") +
   ylab("Num AD loci with an eGene") + xlab("Num colocs tests")
 
-ggplot(plot.df, aes(x=num_egenes, y=num_loci_coloc_0.5, label=dataset_short, col=color)) + geom_point() + theme_bw() +
+ggplot(plot.df, aes(x=num_egenes, y=num_loci_coloc_0.5, label=dataset_short, col=color)) + geom_point() + theme_bw(fontSize) +
   geom_text(mapping = aes(size=size, col=text_color), data = labels.df, hjust=0, vjust=1) +
   scale_size_manual(values=c(3, 5), guide=F) + scale_color_manual(values=c("black", "blue", "grey40"), guide=F) + scale_x_continuous(expand=c(0.1, 0)) +
   ggtitle("Num loci with at least one H4 > 0.5 vs. Num eGenes") +
   ylab("Num AD loci with an eGene H4 > 0.5") + xlab("Num eGenes")
 
-ggplot(plot.df, aes(x=num_egenes, y=num_loci_coloc_0.9, label=dataset_short, col=color)) + geom_point() + theme_bw() +
+ggplot(plot.df, aes(x=num_egenes, y=num_loci_coloc_0.9, label=dataset_short, col=color)) + geom_point() + theme_bw(fontSize) +
   geom_text(mapping = aes(size=size, col=text_color), data = labels.df, hjust=0, vjust=1) +
   scale_size_manual(values=c(3, 5), guide=F) + scale_color_manual(values=c("black", "blue", "grey40"), guide=F) + scale_x_continuous(expand=c(0.1, 0)) +
   ggtitle("Num loci with at least one H4 > 0.9 vs. Num eGenes") +
   ylab("Num AD loci with an eGene H4 > 0.9") + xlab("Num eGenes")
 
-ggplot(plot.df, aes(x=num_coloc_tests, y=num_loci_coloc_0.5, label=dataset_short, col=color)) + geom_point() + theme_bw() +
+ggplot(plot.df, aes(x=num_coloc_tests, y=num_loci_coloc_0.5, label=dataset_short, col=color)) + geom_point() + theme_bw(fontSize) +
   geom_text(mapping = aes(size=size, col=text_color), data = labels.df, hjust=0, vjust=1) +
   scale_size_manual(values=c(3, 5), guide=F) + scale_color_manual(values=c("black", "blue", "grey40"), guide=F) + scale_x_continuous(expand=c(0.1, 0)) +
   ggtitle("Num loci with at least one H4 > 0.5 vs. Num coloc tests") +
   ylab("Num AD loci with an eGene H4 > 0.5") + xlab("Num coloc tests")
 
-ggplot(plot.df, aes(x=num_coloc_tests, y=num_loci_coloc_0.9, label=dataset_short, col=color)) + geom_point() + theme_bw() +
+ggplot(plot.df, aes(x=num_coloc_tests, y=num_loci_coloc_0.9, label=dataset_short, col=color)) + geom_point() + theme_bw(fontSize) +
   geom_text(mapping = aes(size=size, col=text_color), data = labels.df, hjust=0, vjust=1) +
   scale_size_manual(values=c(3, 5), guide=F) + scale_color_manual(values=c("black", "blue", "grey40"), guide=F) + scale_x_continuous(expand=c(0.1, 0)) +
   ggtitle("Num loci with at least one H4 > 0.9 vs. Num coloc tests") +
   ylab("Num AD loci with an eGene H4 > 0.9") + xlab("Num coloc tests")
 
-ggplot(plot.df, aes(x=num_loci_with_egene, y=num_loci_coloc_0.5, label=dataset_short, col=color)) + geom_point() + theme_bw() +
+ggplot(plot.df, aes(x=num_loci_with_egene, y=num_loci_coloc_0.5, label=dataset_short, col=color)) + geom_point() + theme_bw(fontSize) +
   geom_text(mapping = aes(size=size, col=text_color), data = labels.df, hjust=0, vjust=1) +
   scale_size_manual(values=c(3, 5), guide=F) + scale_color_manual(values=c("black", "blue", "grey40"), guide=F) + scale_x_continuous(expand=c(0.1, 0)) +
   ggtitle("Num loci with at least one H4 > 0.5 vs. Num AD loci with an eGene") +
   ylab("Num AD loci with an eGene H4 > 0.5") + xlab("Num AD loci with an eGene")
 
-ggplot(plot.df, aes(x=num_loci_with_egene, y=num_loci_coloc_0.9, label=dataset_short, col=color)) + geom_point() + theme_bw() +
+ggplot(plot.df, aes(x=num_loci_with_egene, y=num_loci_coloc_0.9, label=dataset_short, col=color)) + geom_point() + theme_bw(fontSize) +
   geom_text(mapping = aes(size=size, col=text_color), data = labels.df, hjust=0, vjust=1) +
   scale_size_manual(values=c(3, 5), guide=F) + scale_color_manual(values=c("black", "blue", "grey40"), guide=F) + scale_x_continuous(expand=c(0.1, 0)) +
   ggtitle("Num loci with at least one H4 > 0.9 vs. Num AD loci with an eGene") +
@@ -222,7 +223,7 @@ colocs.df = colocs.df %>% dplyr::left_join(multigene.expr.df, by = c("dataset_sh
 colocs.df[is.na(colocs.df$expr_quantile),]$expr_quantile = colocs.df$expr_rank_multigene[is.na(colocs.df$expr_quantile)]
 sum(is.na(colocs.df$expr_quantile))
 
-save.df = colocs.df %>% dplyr::select(-H4_rel_H3H4, -matching_ens_id, -expr_dataset, -expr_rank_multigene)
+save.df = colocs.df %>% dplyr::select(-matching_ens_id, -expr_dataset, -expr_rank_multigene)
 write.table(save.df, file=file.path(coloc_root, "output", "coloc.AD.meta.eqtl_sqtl_colocs.expr.txt"),
             col.names=T, row.names=F, quote=F, sep="\t", na="")
 #mg.save.df = save.df %>% dplyr::filter(dataset_short == "microglia")
@@ -244,20 +245,20 @@ ggplot(plot.df, aes(x=dataset_short, y=expr_quantile, col=H4gt09, alpha=H4gt09, 
   geom_jitter(data = plot.df %>% dplyr::filter(H4 >= 0.9), width = 0.25) +
   scale_color_manual(values=c("grey40", "blue"), name="PP H4 > 0.9") +
   scale_alpha_manual(values=c(0.5, 1), guide=F) +
-  theme_bw() + ggtitle("Expression quantiles of all QTL genes at coloc loci") +
+  theme_bw(fontSize) + ggtitle("Expression quantiles of all QTL genes at coloc loci") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   ylab("Expression quantile") + xlab("QTL Dataset")
 
 # ggplot(plot.df %>% dplyr::filter(H4 > 0.5), aes(x=dataset_short, y=expr_quantile)) + geom_boxplot(outlier.shape = NA) +
 #   geom_jitter(width = 0.25) +
 #   scale_color_manual(values=c("grey60", "blue"), name="PP H4 > 0.9") +
-#   theme_bw() + ggtitle("Expression rank of genes at coloc loci") +
+#   theme_bw(fontSize) + ggtitle("Expression rank of genes at coloc loci") +
 #   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 # ggplot(plot.df %>% dplyr::filter(H4 > 0.9), aes(x=dataset_short, y=expr_quantile)) + geom_boxplot(outlier.shape = NA) +
 #   geom_jitter(width = 0.25) +
 #   scale_color_manual(values=c("grey60", "blue"), name="PP H4 > 0.9") +
-#   theme_bw() + ggtitle("Expression quantiles of genes at coloc loci") +
+#   theme_bw(fontSize) + ggtitle("Expression quantiles of genes at coloc loci") +
 #   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 
@@ -269,14 +270,14 @@ ggplot(plot.df2, aes(x=dataset_short, y=expr_quantile, col=H4gt09, alpha=H4gt09,
   geom_jitter(data = plot.df2 %>% dplyr::filter(H4 >= 0.9), width = 0.25) +
   scale_color_manual(values=c("grey40", "blue"), name="PP H4 > 0.9") +
   scale_alpha_manual(values=c(0.5, 1), guide=F) +
-  theme_bw() + ggtitle("Expression quantiles of top coloc gene per locus") +
+  theme_bw(fontSize) + ggtitle("Expression quantiles of top coloc gene per locus") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   ylab("Expression quantile") + xlab("QTL Dataset")
 
 # ggplot(plot.df2 %>% dplyr::filter(H4 > 0.9), aes(x=dataset_short, y=expr_quantile)) + geom_boxplot(outlier.shape = NA) +
 #   geom_jitter(data = plot.df2 %>% dplyr::filter(H4 >= 0.9), width = 0.25) +
 #   scale_color_manual(values=c("grey60", "blue"), name="PP H4 > 0.9") +
-#   theme_bw() + ggtitle("Expression quantiles of top coloc gene per locus (only H4 > 0.9)") +
+#   theme_bw(fontSize) + ggtitle("Expression quantiles of top coloc gene per locus (only H4 > 0.9)") +
 #   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 
@@ -288,7 +289,7 @@ plot.df3 = plot.df2 %>% dplyr::arrange(dataset_short, expr_quantile) %>%
 ggplot(plot.df3, aes(x=index, y=expr_quantile, col=H4gt09)) + geom_point() +
   facet_wrap(~dataset_short) +
   scale_color_manual(values=c("grey60", "blue"), name="PP H4 > 0.9") +
-  theme_bw() + ggtitle("Expression quantiles of top coloc gene per locus") +
+  theme_bw(fontSize) + ggtitle("Expression quantiles of top coloc gene per locus") +
   ylab("Expression quantile") + xlab("AD locus index")
 
 # Subset to genes with a coloc having H4 > 0.5
@@ -300,7 +301,7 @@ plot.df3 = plot.df2 %>% dplyr::arrange(dataset_short, expr_quantile) %>%
 ggplot(plot.df3, aes(x=index, y=expr_quantile, col=H4gt09)) + geom_point() +
   facet_wrap(~dataset_short) +
   scale_color_manual(values=c("grey60", "blue"), name="PP H4 > 0.9") +
-  theme_bw() + ggtitle("Expression quantiles of top coloc gene per locus (only H4 > 0.5)") +
+  theme_bw(fontSize) + ggtitle("Expression quantiles of top coloc gene per locus (only H4 > 0.5)") +
   ylab("Expression quantile") + xlab("AD locus index")
 
 
