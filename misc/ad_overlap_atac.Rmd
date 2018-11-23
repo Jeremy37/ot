@@ -1,0 +1,88 @@
+# AD SNP overlaps with ATAC peaks
+
+Here we compare the number of AD SNPs overlapping ATAC peaks in different cell types and choosing different thresholds of posterior probability.
+
+```{r Setup, message=FALSE, warning=FALSE, echo=FALSE}
+library(tidyverse)
+
+root = "/Users/jeremys/work/opentargets/AD_finemap"
+outputPath = "/Users/jeremys/work/opentargets/AD_finemap/analysis"
+#setwd(outputPath)
+
+ad.annotated.fname = file.path(root, "annotated", "AD.credible_sets.annotated.colocs.txt")
+```
+
+```{r LoadData, warning=FALSE, message=FALSE, echo=FALSE}
+ad.df = readr::read_tsv(ad.annotated.fname) %>% dplyr::filter(finemap_prob > 1e-5) %>%
+  dplyr::mutate(atac_sum = iPSC + microglia + ipsMacrophage + NPC + Neuron + iNeuron + ipsSensNeuron,
+                any_atac = ifelse(atac_sum > 0, 1, 0))
+
+ad.gather.df = ad.df %>%
+  dplyr::select(locus_name, rsID, finemap_prob, iPSC, microglia, ipsMacrophage, NPC, Neuron, iNeuron, ipsSensNeuron, atac_sum, any_atac) %>%
+  tidyr::gather(key = "cell_type", value = "ATAC_overlap", -locus_name, -rsID, -finemap_prob)
+```
+
+
+```{r PlotPeakSumByCellType, warning=FALSE, message=FALSE, echo=FALSE}
+thresholds = c(0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1)
+atac.peaksum.df = data.frame()
+
+for (thresh in thresholds) {
+  newdf = ad.gather.df %>%
+    dplyr::group_by(cell_type) %>%
+  dplyr::summarise(threshold = thresh, ATAC_overlaps = sum(ATAC_overlap[finemap_prob > thresh]))
+  atac.peaksum.df = rbind(atac.peaksum.df, newdf)
+}
+
+ggplot(atac.peaksum.df %>% dplyr::filter(cell_type != "atac_sum"),
+       aes(x=threshold, y=ATAC_overlaps, col=cell_type, linetype=cell_type)) +
+  geom_line(size=1, alpha=0.8) + geom_point(alhpa=0.6) +
+  scale_x_log10() +
+  theme_bw() + xlab("SNP PPA threshold") + ylab("Number of ATAC overlaps") +
+  ggtitle("Number of ATAC overlaps across AD loci")
+
+ggplot(atac.peaksum.df %>% dplyr::filter(cell_type != "atac_sum"),
+       aes(x=threshold, y=ATAC_overlaps, col=cell_type, linetype=cell_type)) +
+  geom_line(size=1, alpha=0.8) + geom_point(alhpa=0.6) +
+  scale_x_log10() +
+  theme_bw() + xlab("SNP PPA threshold") + ylab("Number of ATAC overlaps") +
+  ggtitle("Number of ATAC overlaps across AD loci") + coord_cartesian(ylim=c(0, 90))
+
+```
+
+Next, let's see how these overlaps are distributed across loci.
+
+```{r PlotPeakSumByLocus, warning=FALSE, message=FALSE, echo=FALSE}
+thresholds = c(0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1)
+
+plotOverlapsByThreshold = function(thresholds) {
+  atac.peaksum.df = data.frame()
+  
+  for (thresh in thresholds) {
+    newdf = ad.gather.df %>%
+      dplyr::filter(cell_type == "atac_sum") %>%
+      dplyr::group_by(locus_name) %>%
+      dplyr::summarise(threshold = thresh, ATAC_overlaps = sum(ATAC_overlap[finemap_prob > thresh]))
+    atac.peaksum.df = rbind(atac.peaksum.df, newdf)
+  }
+  atac.peaksum.df$threshold = factor(as.character(atac.peaksum.df$threshold), levels = as.character(thresholds))
+  p = ggplot(atac.peaksum.df,aes(x=locus_name, y=ATAC_overlaps, fill=threshold)) +
+    geom_bar(stat="identity", position="dodge") +
+    theme_bw() + xlab("Locus") + ylab("Total number of ATAC overlaps") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    ggtitle("Number of ATAC overlaps per locus")
+  p
+}
+
+print( plotOverlapsByThreshold(thresholds = c(0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1)) )
+```
+
+In case that's too many bars to see, look at it with fewer thresholds.
+
+```{r PlotPeakSumByLocus2, warning=FALSE, message=FALSE, echo=FALSE}
+
+print( plotOverlapsByThreshold(thresholds = c(0.005, 0.02, 0.1)) )
+
+```
+
+I will also save a table that shows all SNPs in ATAC peaks, per locus, sorted by decreasing finemap probability.
