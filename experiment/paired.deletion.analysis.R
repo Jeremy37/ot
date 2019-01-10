@@ -24,6 +24,7 @@ opt = NULL
 #setwd("/Users/jeremys/work/opentargets/experiment/transcribed/batch2")
 #setwd("/Users/jeremys/work/opentargets/experiment/transcribed/batch1_snp26_repeats")
 #setwd("/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated")
+#setwd("/Users/jeremys/work/opentargets/experiment/transcribed/clu_sipa1l2")
 
 
 main = function()
@@ -49,6 +50,8 @@ main = function()
     make_option(c("--qc_plot_max_udps"), type="integer", default=20, metavar="INT", help="[default %default]"),
     make_option(c("--qc_plot_min_udp_fraction"), type="integer", default=0.005, metavar="FLOAT", help="[default %default]"),
     make_option(c("--qc_plot_exclude_wt"), type="logical", default=T, action="store_true", help="[default %default]"),
+    make_option(c("--del_span_start"), type="integer", default=NULL, help="[default %default]"),
+    make_option(c("--del_span_end"), type="integer", default=NULL, help="[default %default]"),
     make_option(c("--uns_plot_min_gDNA"), type="integer", default=10, metavar="INT", help="[default %default]"),
     make_option(c("--uns_plot_min_cDNA"), type="integer", default=0, metavar="INT", help="[default %default]"),
     make_option(c("--uns_plot_max_udps"), type="integer", default=40, metavar="INT", help="[default %default]"),
@@ -57,12 +60,15 @@ main = function()
     make_option(c("--no_udp_profile"), type="logical", default=F, action="store_true", help="[default %default]"),
     make_option(c("--no_uns_profile"), type="logical", default=F, action="store_true", help="[default %default]"),
     make_option(c("--no_stats"), type="logical", default=F, action="store_true", help="[default %default]"),
+    make_option(c("--replicate_qc_plots"), type="logical", default=T, action="store_true", help="[default %default]"),
     make_option(c("--no_summary_plots"), type="logical", default=F, action="store_true", help="[default %default]"),
     make_option(c("--no_replicate_plots"), type="logical", default=F, action="store_true", help="[default %default]"),
     make_option(c("--variance_analysis"), type="logical", default=F, action="store_true", help="[default %default]"),
     make_option(c("--variance_analysis_min_count"), type="integer", default=100, help="[default %default]"),
     make_option(c("--variance_analysis_min_fraction"), type="numeric", default=0.001, help="[default %default]"),
     make_option(c("--power_analysis"), type="logical", default=F, action="store_true", help="[default %default]"),
+    make_option(c("--plot_width"), type="integer", default=8, metavar="INT", help="[default %default]"),
+    make_option(c("--plot_height"), type="integer", default=7, metavar="INT", help="[default %default]"),
     make_option(c("--read_data"), type="character", default=NULL)
   )
   
@@ -80,7 +86,7 @@ main = function()
     exclude_multiple_deletions = F,
     exclude_nonspanning_reads = T,
     exclude_nonspanning_deletions = T,
-    qc_plot_max_udps = 20,
+    qc_plot_max_udps = 10,
     qc_plot_min_udp_fraction = 0.002,
     qc_plot_exclude_wt = T,
     uns_plot_min_gDNA = 10,
@@ -91,9 +97,12 @@ main = function()
     no_udp_profile = F,
     no_uns_profile = F,
     no_stats = F,
+    replicate_qc_plots = T,
     no_replicate_plots = T,
     variance_analysis = F,
     power_analysis = F,
+    plot_width = 8,
+    plot_height = 7,
     variance_analysis_min_count = 100,
     variance_analysis_min_fraction = 0.001)
   
@@ -112,23 +121,85 @@ main = function()
   # opt$power_analysis = T
   # opt$read_data = "analysis/batch1.read_data.new.rds"
   # 
+  # opt <<- default_opts
+  # opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated/batch1_updated.regions.ref.tsv"
+  # opt$replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated/batch1_updated.replicates.tsv"
+  # opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated/analysis/batch1_updated.edit_dels.10bp_window.new_stats"
+  # opt$read_data = "analysis/batch1_updated.read_data.rds"
+
   opt <<- default_opts
-  opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated/batch1_updated.regions.ref.tsv"
+  opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated/batch1_updated.regions.varcomp.tsv"
   opt$replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated/batch1_updated.replicates.tsv"
-  opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated/analysis/batch1_updated.edit_dels.10bp_window"
+  opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated/analysis/batch1_updated.edit_dels.10bp_window.variance_components"
+  opt$variance_analysis = T
   opt$read_data = "analysis/batch1_updated.read_data.rds"
+  # 
+  # opt <<- default_opts
+  # opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/batch2.regions.amplicon.tsv"
+  # opt$replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/batch2.replicates.amplicon.flash.tsv"
+  # opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/analysis/batch2.edit_dels.10bp_window.new_stats"
+  # opt$read_data = "analysis/batch2.combined.flash.read_data.rds"
   
-  opt <<- default_opts
-  opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/batch2.regions.amplicon.tsv"
-  opt$replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/batch2.replicates.amplicon.flash.tsv"
-  opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/analysis/batch2.edit_dels.10bp_window"
-  opt$read_data = "analysis/batch2.combined.flash.read_data.rds"
+  # opt <<- default_opts
+  # opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/batch2.regions.amplicon.excl.snp6.tsv"
+  # opt$replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/batch2.replicates.amplicon.flash.excl.snp6.tsv"
+  # opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/analysis/batch2.edit_dels.10bp_window.excl.snp6.new"
+  # opt$read_data = "analysis/batch2.combined.flash.read_data.excl.snp6.rds"
+  
+  # opt <<- default_opts
+  # opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/batch2.regions.amplicon.snp22.tsv"
+  # opt$replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/batch2.replicates.amplicon.flash.tsv"
+  # opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/analysis/batch2.edit_dels.10bp_window.snp22.covering90-119"
+  # opt$read_data = "analysis/batch2.combined.flash.read_data.snp22.rds"
+  # opt$del_span_start = 90
+  # opt$del_span_end = 119
+  # opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/analysis/batch2.edit_dels.10bp_window.snp22.covering100-111"
+  # opt$read_data = "analysis/batch2.combined.flash.read_data.snp22.rds"
+  # opt$del_span_start = 100
+  # opt$del_span_end = 111
+  # opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/batch2.regions.amplicon.snp22.splice.tsv"
+  # opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/analysis/batch2.edit_dels.10bp_window.snp22.splice"
+  # opt$del_span_start = 40
+  # opt$del_span_end = 105
+  
+  # opt <<- default_opts
+  # opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated/batch1_updated.regions.ref.snp26.tsv"
+  # opt$replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated/batch1_updated.replicates.tsv"
+  # opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated/analysis/batch1_updated.edit_dels.10bp_window.CCDC6snp26.covering"
+  # opt$read_data = "analysis/batch1_updated.read_data.rds"
+  # opt$del_span_start = 80
+  # opt$del_span_end = 86
+  # 
+  # opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated/batch1_updated.regions.ref.snp26.splice.tsv"
+  # opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated/analysis/batch1_updated.edit_dels.10bp_window.CCDC6snp26.splice"
+  # opt$del_span_start = 1
+  # opt$del_span_end = 80
   
   # opt <<- default_opts
   # opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_snp26_repeats/batch1_snp26_repeats.regions.tsv"
   # opt$replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_snp26_repeats/batch1_snp26_repeats.replicates.tsv"
-  # opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_snp26_repeats/analysis/batch1_snp26_repeats"
+  # opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_snp26_repeats/analysis/batch1_snp26_repeats.new2"
   # opt$read_data = "analysis/batch1_snp26_repeats.flash.read_data.rds"
+  # opt$variance_analysis = T
+  # opt$replicate_qc_plots = F
+  # opt$plot_width = 11
+  # opt$plot_height = 8
+  
+  # opt <<- default_opts
+  # opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/clu_sipa1l2/clu_sipa1l2.regions.excl.tsv"
+  # opt$replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/clu_sipa1l2/clu_sipa1l2.meta.excl.tsv"
+  # opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/clu_sipa1l2/analysis/clu_sipa1l2.excl.edit_dels.10bp_window"
+  # opt$read_data = "analysis/clu_sipa1l2.read_data.all.rds"
+  # opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/clu_sipa1l2/clu_sipa1l2.regions.new.tsv"
+  # opt$replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/clu_sipa1l2/clu_sipa1l2.meta.tsv"
+  # opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/clu_sipa1l2/analysis/clu_sipa1l2.edit_dels.10bp_window.new"
+  # opt$read_data = "analysis/clu_sipa1l2.read_data.rds"
+  # opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/clu_sipa1l2/clu_sipa1l2.regions.except9.tsv"
+  # opt$replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/clu_sipa1l2/clu_sipa1l2.meta.all.tsv"
+  # opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/clu_sipa1l2/analysis/clu_sipa1l2.all.edit_dels.10bp_window.new_stats"
+  # opt$read_data = "analysis/clu_sipa1l2.read_data.all.rds"
+  # opt$plot_width = 11
+  # opt$plot_height = 8
   
   cat("All options:\n")
   printList(opt)
@@ -143,6 +214,14 @@ main = function()
   checkRequiredOpt(opt, parser, "regions")
   checkRequiredOpt(opt, parser, "replicates")
   checkRequiredOpt(opt, parser, "out")
+  
+  if (!is.null(opt$del_span_start) & is.null(opt$del_span_end) | is.null(opt$del_span_start) & !is.null(opt$del_span_end)) {
+    stop("Both options 'del_span_start' and 'del_span_end' must be specified together. Only one was given.")
+  }
+  opt$custom_del_span = F
+  if (!is.null(opt$del_span_start) & !is.null(opt$del_span_end)) {
+    opt$custom_del_span = T
+  }
   
   regions.df = readr::read_tsv(opt$regions, col_types="ccciiiiccc")
   #regions.df = regions.df %>% dplyr::filter((index %in% c("29")))
@@ -181,6 +260,10 @@ main = function()
     }
     cur_region = as.list(df[1,])
     cur_replicates.df = replicates.df %>% dplyr::filter(name == region_name)
+    if (nrow(cur_replicates.df) == 0) {
+      warning(sprintf("No replicates found for region %s", region_name))
+      next
+    }
     result = doFullDeletionAnalysis(region = cur_region, replicates.df = cur_replicates.df, read_data)
     result$region = region_name
     result$replicate.df = cur_replicates.df
@@ -247,18 +330,23 @@ main = function()
       hdr.error_prop.pval      = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "hdr_wt.error_prop.res", "pval"))),
       hdr.error_prop.effect    = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "hdr_wt.error_prop.res", "effect"))),
       hdr.error_prop.effect_sd = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "hdr_wt.error_prop.res", "effect_sd"))),
+      hdr.error_prop.effect_confint = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "hdr_wt.error_prop.res", "effect_confint"))),
       del.error_prop.pval      = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.error_prop.res", "pval"))),
       del.error_prop.effect    = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.error_prop.res", "effect"))),
       del.error_prop.effect_sd = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.error_prop.res", "effect_sd"))),
+      del.error_prop.effect_confint = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.error_prop.res", "effect_confint"))),
       del.2bp.error_prop.pval      = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.2bp.error_prop.res", "pval"))),
       del.2bp.error_prop.effect    = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.2bp.error_prop.res", "effect"))),
       del.2bp.error_prop.effect_sd = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.2bp.error_prop.res", "effect_sd"))),
+      del.2bp.error_prop.effect_confint = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.2bp.error_prop.res", "effect_confint"))),
       del.10bp.error_prop.pval      = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.10bp.error_prop.res", "pval"))),
       del.10bp.error_prop.effect    = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.10bp.error_prop.res", "effect"))),
       del.10bp.error_prop.effect_sd = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.10bp.error_prop.res", "effect_sd"))),
+      del.10bp.error_prop.effect_confint = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.10bp.error_prop.res", "effect_confint"))),
       del.20bp.error_prop.pval      = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.20bp.error_prop.res", "pval"))),
       del.20bp.error_prop.effect    = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.20bp.error_prop.res", "effect"))),
-      del.20bp.error_prop.effect_sd = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.20bp.error_prop.res", "effect_sd")))
+      del.20bp.error_prop.effect_sd = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.20bp.error_prop.res", "effect_sd"))),
+      del.20bp.error_prop.effect_confint = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.20bp.error_prop.res", "effect_confint")))
     )
     fname = sprintf("%s.region_stats.tsv", opt$out)
     write.table(stats.summary.df, fname, quote=F, row.names=F, col.names=T, sep="\t")
@@ -279,11 +367,27 @@ main = function()
     annotation_custom(tableGrob(settings.df, theme = myTableTheme), xmin=1, xmax=9, ymin=1, ymax=9) +
     ggtitle("CRISPR editing analysis settings")
   
+  p.variance_components = NULL
+  if (opt$variance_analysis) {
+    # Do variance components analysis across all regions together
+    all_replicates.udp.df = bind_rows(lapply(all_results, FUN = function(res) getListItemField(res, c("replicate.udp.df"))))
+    if (length(unique(all_replicates.udp.df$name)) > 1) {
+      p.variance_components = getVarianceComponentsPlots(replicate.udp.df = all_replicates.udp.df,
+                                                         replicates.df = replicates.df %>% dplyr::filter(name %in% regions.df$name),
+                                                         method = "read_fraction",
+                                                         min_udp_total_count = opt$variance_analysis_min_count,
+                                                         min_udp_fraction = opt$variance_analysis_min_fraction,
+                                                         plot_title = "Variance components across regions")
+    }
+  }
+  
+  
   fname = sprintf("%s.plots.pdf", opt$out)
-  pdf(file = fname, width = 8, height = 7)
+  pdf(file = fname, width = opt$plot_width, height = opt$plot_height)
   print(settingsPlot)
   if (!is.null(stats_plot)) { print(stats_plot) }
   print(all_region_plots)
+  if (!is.null(p.variance_components)) { print(p.variance_components) }
   dev.off()
 }
 
@@ -298,10 +402,10 @@ statsSummaryPlot = function(stats.summary.df) {
     else { "p < 0.01" }
   }
   stats.summary.df$hdr_significance = factor(sapply(stats.summary.df$hdr.error_prop.pval, FUN = getSignificanceStr), levels=c("p >= 0.01", "p < 0.01", "p < 0.001"))
-
+  
   p.stats.hdr = ggplot(stats.summary.df, aes(x=name, y=hdr.error_prop.effect, fill=hdr_significance)) +
     geom_bar(stat = "identity", width=0.5) + 
-    geom_errorbar(aes(ymin = hdr.error_prop.effect - 1.96*hdr.error_prop.effect_sd, ymax = hdr.error_prop.effect + 1.96*hdr.error_prop.effect_sd),
+    geom_errorbar(aes(ymin = hdr.error_prop.effect - hdr.error_prop.effect_confint, ymax = hdr.error_prop.effect + hdr.error_prop.effect_confint),
                   width = 0.2, col = "grey30") +
     geom_hline(yintercept = 1, col = "red") +
     theme_bw(10) + theme(axis.text.x = element_blank(),
@@ -311,11 +415,11 @@ statsSummaryPlot = function(stats.summary.df) {
     ylab("HDR effect size") + ggtitle("HDR effect size") +
     scale_fill_manual(values=c(`p >= 0.01`="grey70", `p < 0.01`="cornflowerblue", `p < 0.001`="red3")) +
     coord_cartesian(ylim = c(0, min(2, max(stats.summary.df$hdr.error_prop.effect * 1.2, na.rm = T))))
-    
+  
   stats.summary.df$del_significance = factor(sapply(stats.summary.df$del.error_prop.pval, FUN = getSignificanceStr), levels=c("p >= 0.01", "p < 0.01", "p < 0.001"))
   p.stats.del = ggplot(stats.summary.df, aes(x=name, y=del.error_prop.effect, fill=del_significance)) +
     geom_bar(stat = "identity", width=0.5) + 
-    geom_errorbar(aes(ymin = del.error_prop.effect - 1.96*del.error_prop.effect_sd, ymax = del.error_prop.effect + 1.96*del.error_prop.effect_sd),
+    geom_errorbar(aes(ymin = del.error_prop.effect - del.error_prop.effect_confint, ymax = del.error_prop.effect + del.error_prop.effect_confint),
                   width = 0.2, col = "grey30") +
     geom_hline(yintercept = 1, col = "red") +
     theme_bw(10) + theme(axis.text.x = element_blank(),
@@ -417,7 +521,7 @@ doFullDeletionAnalysis = function(region, replicates.df, read_data = NULL)
       dplyr::arrange(replicate, type, sites_profile)
   }
   
-  stats_res = getFullReplicateStats(replicate_list)
+  stats_res = getFullReplicateStats(replicate_list, rel_sites)
   
   # Merge together results from all replicates
   replicate.udp.df = bind_rows(replicate_udps)
@@ -437,6 +541,7 @@ doFullDeletionAnalysis = function(region, replicates.df, read_data = NULL)
                             is_hdr_allele = first(is_hdr_allele),
                             is_wt_allele = first(is_wt_allele),
                             has_any_deletion = first(has_any_deletion),
+                            has_custom_deletion = first(has_custom_deletion),
                             has_crispr_deletion = first(has_crispr_deletion),
                             deletion_start = first(deletion_start),
                             deletion_end = first(deletion_end),
@@ -455,34 +560,46 @@ doFullDeletionAnalysis = function(region, replicates.df, read_data = NULL)
   p.merged_UDP = plot_grid(p.title, p.cDNA_gDNA, ncol=1, rel_heights=c(0.1, 1)) # rel_heights values control title margins
   
   # Deletion profiles plot - averaged + separate replicates
-  p.merged_del_profile = getDeletionProfilePlot(replicate.udp.df,
+  delprofile.udp.df = replicate.udp.df
+  delprofile.udp.df$count_udp = 1
+  if (opt$custom_del_span) {
+    delprofile.udp.df = replicate.udp.df %>% dplyr::mutate(count_udp = ifelse(has_custom_deletion, 1, 0))
+  }
+  p.merged_del_profile = getDeletionProfilePlot(delprofile.udp.df,
                                                 rel_sites,
                                                 plot_title = "Merged replicates",
                                                 show_average = T, show_replicates = F)
   p.merged_del_profile = p.merged_del_profile + theme(axis.title.x=element_blank())
-  p.replicate_del_profile = getDeletionProfilePlot(replicate.udp.df,
+  p.replicate_del_profile = getDeletionProfilePlot(delprofile.udp.df,
                                                    rel_sites,
                                                    plot_title = "Individual replicates",
                                                    show_average = T, show_replicates = T)
-  p.del_profile = egg::ggarrange(ggdraw() + draw_label(region$name, fontface='bold'),
+  del_profile_title = sprintf("%s %s", region$name, ifelse(opt$custom_del_span, " custom dels only", ""))
+  p.del_profile = egg::ggarrange(ggdraw() + draw_label(del_profile_title, fontface='bold'),
                                  p.merged_del_profile, p.replicate_del_profile, 
                                  ncol=1, heights=c(0.1, 0.5, 0.5), draw = F)
   
-  # Replicate QC using basic stats
-  p.replicate_qc.1 = getReplicateStatsPlot(stats_res$stats.df, region_title = region$name)
-  
-  # Replicate QC plot
-  p.replicate_qc.2 = getReplicateQCPlot(replicate.udp.df, region_title = region$name,
-                                        max_udps = opt$qc_plot_max_udps, min_avg_udp_fraction = opt$qc_plot_min_udp_fraction,
-                                        exclude_wt = opt$qc_plot_exclude_wt)
+  p.replicate_qc.1 = NULL
+  p.replicate_qc.2 = NULL
+  if (opt$replicate_qc_plots) {
+    # Replicate QC using basic stats
+    p.replicate_qc.1 = getReplicateStatsPlot(stats_res$stats.df, region_title = region$name)
+    
+    # Replicate QC plot
+    p.replicate_qc.2 = getReplicateQCPlot(replicate.udp.df, region_title = region$name,
+                                          max_udps = opt$qc_plot_max_udps, min_avg_udp_fraction = opt$qc_plot_min_udp_fraction,
+                                          exclude_wt = opt$qc_plot_exclude_wt)
+  }
   
   # UNS plot
-  p.merged_UNS = getUNSPlot(replicate.udp.df, rel_sites, plot_title = region_title,
+  p.merged_UNS = getUNSPlot(replicate.udp.df, replicates.df = replicates.df,
+                            sites = rel_sites, plot_title = region_title,
                             min_gDNA_count = opt$uns_plot_min_gDNA, min_cDNA_count = opt$uns_plot_min_cDNA,
                             max_udps = opt$uns_plot_max_udps)
   
-  uns_res = getUNSData(replicate.udp.df, rel_sites, region_title, min_gDNA_count = opt$uns_plot_min_gDNA,
-                       min_cDNA_count = opt$uns_plot_min_cDNA)
+  uns_res = getUNSData(replicate.udp.df, replicates.df = replicates.df,
+                       sites = rel_sites, region_name = region_title,
+                       min_gDNA_count = opt$uns_plot_min_gDNA, min_cDNA_count = opt$uns_plot_min_cDNA)
   uns.df = NULL
   uns.replicates.df = NULL
   if (!is.null(uns_res)) {
@@ -538,7 +655,7 @@ doFullDeletionAnalysis = function(region, replicates.df, read_data = NULL)
 
 ######################################################################################
 
-getFullReplicateStats = function(replicate_list) {
+getFullReplicateStats = function(replicate_list, rel_sites) {
   stats.df = bind_rows(lapply(replicate_list, function(res) as.data.frame(res$stats)))
   stats.df$HDR_WT_ratio = (stats.df$num_hdr_reads / stats.df$num_wt_reads)
   stats.df$DEL_WT_ratio = (stats.df$num_deletion_reads / stats.df$num_wt_reads)
@@ -552,45 +669,47 @@ getFullReplicateStats = function(replicate_list) {
   del_ratio_res_2bp = NULL
   del_ratio_res_10bp = NULL
   del_ratio_res_20bp = NULL
+  del_ratio_res_custom = NULL
   num_cDNA = sum(stats.df$type == "cDNA")
   num_gDNA = sum(stats.df$type == "gDNA")
   if (num_cDNA < 2 | num_gDNA < 2) {
     summary.left.prop = sprintf("Propagation of uncertainty\nUnable to calculate with < 2 replicates")
     summary.right.prop = ""
   } else {
+    confIntervalString = function(ratioRes) {
+      sprintf("95%% CI: (%.3g, %.3g)",
+              ratioRes$effect - ratioRes$effect_confint,
+              ratioRes$effect + ratioRes$effect_confint)
+    }
     hdr_ratio_res = getHDRRatioEstimate(stats.df, colToCompare = "num_hdr_reads")
-    hdr.conf.interval.str = sprintf("95%% CI: (%.3g, %.3g)",
-                                    hdr_ratio_res$effect - 1.96*hdr_ratio_res$effect_sd,
-                                    hdr_ratio_res$effect + 1.96*hdr_ratio_res$effect_sd)
+    hdr.conf.interval.str = confIntervalString(hdr_ratio_res)
     hdr.summary.prop = sprintf("cDNA:gDNA ratio (HDR/WT): %.3g\n%s,    p = %.3g",
                                hdr_ratio_res$effect, hdr.conf.interval.str, hdr_ratio_res$pval)
     
     del_ratio_res = getHDRRatioEstimate(stats.df, colToCompare = "num_deletion_reads")
-    del.conf.interval.str = sprintf("95%% CI: (%.3g, %.3g)",
-                                    del_ratio_res$effect - 1.96*del_ratio_res$effect_sd,
-                                    del_ratio_res$effect + 1.96*del_ratio_res$effect_sd)
-    del.summary.prop = sprintf("cDNA:gDNA ratio (DEL/WT): %.3g\n%s,    p = %.3g",
-                               del_ratio_res$effect, del.conf.interval.str, del_ratio_res$pval)
+    del.conf.interval.str = confIntervalString(del_ratio_res)
+    if (opt$custom_del_span) {
+      del.summary.prop = sprintf("Custom del site %d, span %d-%d\ncDNA:gDNA ratio (DEL/WT): %.3g\n%s,    p = %.3g",
+                                 rel_sites$highlight_site, opt$del_span_start, opt$del_span_end,
+                                 del_ratio_res$effect, del.conf.interval.str, del_ratio_res$pval)
+    } else {
+      del.summary.prop = sprintf("cDNA:gDNA ratio (DEL/WT): %.3g\n%s,    p = %.3g",
+                                 del_ratio_res$effect, del.conf.interval.str, del_ratio_res$pval)
+    }
     summary.left.prop = paste(hdr.summary.prop, del.summary.prop, sep = "\n")
     
     del_ratio_res_2bp = getHDRRatioEstimate(stats.df, colToCompare = "num_deletions_2bp_window")
-    del.conf.interval.str = sprintf("95%% CI: (%.3g, %.3g)",
-                                    del_ratio_res_2bp$effect - 1.96*del_ratio_res_2bp$effect_sd,
-                                    del_ratio_res_2bp$effect + 1.96*del_ratio_res_2bp$effect_sd)
+    del.conf.interval.str = confIntervalString(del_ratio_res_2bp)
     del.summary.prop_2bp = sprintf("cDNA:gDNA ratio (DEL/WT) - 2 bp span: %.3g\n%s,    p = %.3g",
                                    del_ratio_res_2bp$effect, del.conf.interval.str, del_ratio_res_2bp$pval)
     
     del_ratio_res_10bp = getHDRRatioEstimate(stats.df, colToCompare = "num_deletions_10bp_window")
-    del.conf.interval.str = sprintf("95%% CI: (%.3g, %.3g)",
-                                    del_ratio_res_10bp$effect - 1.96*del_ratio_res_10bp$effect_sd,
-                                    del_ratio_res_10bp$effect + 1.96*del_ratio_res_10bp$effect_sd)
+    del.conf.interval.str = confIntervalString(del_ratio_res_10bp)
     del.summary.prop_10bp = sprintf("cDNA:gDNA ratio (DEL/WT) - 10 bp span: %.3g\n%s,    p = %.3g",
                                     del_ratio_res_10bp$effect, del.conf.interval.str, del_ratio_res_10bp$pval)
     
     del_ratio_res_20bp = getHDRRatioEstimate(stats.df, colToCompare = "num_deletions_20bp_window")
-    del.conf.interval.str = sprintf("95%% CI: (%.3g, %.3g)",
-                                    del_ratio_res_20bp$effect - 1.96*del_ratio_res_20bp$effect_sd,
-                                    del_ratio_res_20bp$effect + 1.96*del_ratio_res_20bp$effect_sd)
+    del.conf.interval.str = confIntervalString(del_ratio_res_20bp)
     del.summary.prop_20bp = sprintf("cDNA:gDNA ratio (DEL/WT) - 20 bp span: %.3g\n%s,    p = %.3g",
                                     del_ratio_res_20bp$effect, del.conf.interval.str, del_ratio_res_20bp$pval)
     
@@ -704,6 +823,7 @@ getFullReplicateStats = function(replicate_list) {
                        del_wt.2bp.error_prop.res = del_ratio_res_2bp,
                        del_wt.10bp.error_prop.res = del_ratio_res_10bp,
                        del_wt.20bp.error_prop.res = del_ratio_res_20bp,
+                       del_wt.custom.error_prop.res = del_ratio_res_custom,
                        error_prop.summary = paste(summary.left.prop, summary.right.prop, sep = "\n"))
   
   result_list = list(p.stats = p.stats,
@@ -824,6 +944,9 @@ doReplicateDeletionAnalysis = function(name, replicate, type, bam_file, sequence
     }
     if (sum(reads.df$has_any_deletion) > 0) {
       reads.df$udp[reads.df$has_any_deletion] = sapply(reads.df$udp[reads.df$has_any_deletion], updateUDPEdits, rel_cut_site, opt$editing_window)
+      # If we have zeroed out a deletion, then it's important that we also zero out
+      # the flag for whether it has any deletion.
+      reads.df$has_any_deletion[reads.df$has_any_deletion] = sapply(reads.df$udp[reads.df$has_any_deletion], FUN=function(s) grepl("[*]", s))
     }
   } else {
     # Accept deletions anywhere in the read
@@ -905,6 +1028,14 @@ doReplicateDeletionAnalysis = function(name, replicate, type, bam_file, sequence
   stats$num_deletions_10bp_window = sum((has_deletion_10bp_window & !reads.df$is_hdr_allele) * reads.df$count, na.rm = T)
   stats$num_deletions_20bp_window = sum((has_deletion_20bp_window & !reads.df$is_hdr_allele) * reads.df$count, na.rm = T)
   
+  reads.df$has_custom_deletion = F
+  if (opt$custom_del_span) {
+    reads.df$has_custom_deletion = ( grepl("[*]", substr(reads.df$udp, span_site, span_site)) &
+                                       !grepl("[*]", substr(reads.df$udp, 1, opt$del_span_start)) &
+                                       !grepl("[*]", substr(reads.df$udp, opt$del_span_end, str_length(reads.df$udp))) )
+    stats$num_deletion_reads = sum((reads.df$has_custom_deletion & !reads.df$is_hdr_allele) * reads.df$count, na.rm = T)
+  }
+  
   # Aggregate reads according to their UDP
   udp.df = summarise(reads.df %>% group_by(udp),
                      num_reads = sum(count),
@@ -913,6 +1044,7 @@ doReplicateDeletionAnalysis = function(name, replicate, type, bam_file, sequence
                      spanning_read = first(spanning_read),
                      has_any_deletion = first(has_any_deletion),
                      has_crispr_deletion = first(has_crispr_deletion),
+                     has_custom_deletion = first(has_custom_deletion),
                      has_multiple_deletions = first(has_multiple_deletions),
                      avg_seq_length = mean(seq_length),
                      avg_mismatch_count = mean(mismatch_count)) %>%
@@ -1215,11 +1347,11 @@ getUDPPlot = function(udp.df, plot_title, sites) {
   if (nrow(udp.df) == 0) {
     return(egg::ggarrange(textPlot("No UDPs to plot."), top=plot_title, draw = F))
   }
-  udp.dels.df = udp.df %>% dplyr::select(deletion_start, deletion_end, deletion2_start, deletion2_end)
+  udp.dels.df = udp.df %>% dplyr::select(deletion_start, deletion_end, deletion2_start, deletion2_end, has_custom_deletion)
   udp.dels.df = udp.dels.df %>% arrange(deletion_start, deletion2_start)
   udp.dels.df$y = 1:nrow(udp.dels.df)
-  udp.plot.df = bind_rows(udp.dels.df %>% dplyr::select(y, deletion_start, deletion_end),
-                          udp.dels.df %>% dplyr::select(y, deletion_start=deletion2_start, deletion_end=deletion2_end))
+  udp.plot.df = bind_rows(udp.dels.df %>% dplyr::select(y, deletion_start, deletion_end, has_custom_deletion),
+                          udp.dels.df %>% dplyr::select(y, deletion_start=deletion2_start, deletion_end=deletion2_end, has_custom_deletion))
   udp.plot.df = udp.plot.df %>% dplyr::filter(!is.na(deletion_start))
   
   xmax = nchar(udp.df$udp[1])
@@ -1229,8 +1361,9 @@ getUDPPlot = function(udp.df, plot_title, sites) {
   }
   simple_theme = theme_bw() + theme(panel.grid.minor = element_line(colour="grey90", size=0.1), panel.grid.major = element_line(colour="grey90", size=0.1))
   p.udp_dist = ggplot(udp.plot.df) +
-    geom_segment(aes(x = deletion_start, xend = deletion_end, y = y, yend = y), size = segment_size, color = "dodgerblue3") +
+    geom_segment(aes(x = deletion_start, xend = deletion_end, y = y, yend = y, color = has_custom_deletion), size = segment_size) +
     simple_theme + coord_cartesian(xlim=c(sites$start, sites$end)) + scale_y_reverse() +
+    scale_color_manual(values=c("TRUE"="red", "FALSE"="dodgerblue3"), guide=F) +
     xlab("Nucleotide position") + ylab("Cumulative UDP count")
   
   count.plot.df = data.frame(x=1:xmax)
@@ -1244,18 +1377,30 @@ getUDPPlot = function(udp.df, plot_title, sites) {
   getDelCount = function(i) {
     sum(udp.char.matrix[,i] == '*')
   }
-  getDelReadCount = function(i) {
+  getDelReadCount = function(i, udp.df) {
     sum(isPositionDel(i) * udp.df$num_reads)
   }
   
   count.plot.df$udp_count = sapply(count.plot.df$x, FUN=getDelCount)
-  count.plot.df$read_count = sapply(count.plot.df$x, FUN=getDelReadCount)
+  count.plot.df$read_count = sapply(count.plot.df$x, FUN=getDelReadCount, udp.df)
+  
+  count.plot.df$udp_count_custom_del = 0
+  count.plot.df$read_count_custom_del = 0
+  if (any(udp.df$has_custom_deletion)) {
+    udp.custom_del.df = udp.df %>% dplyr::filter(has_custom_deletion)
+    udp.char.matrix = str_split_fixed(udp.custom_del.df$udp, "", n = nchar(udp.custom_del.df$udp[1]))
+    count.plot.df$udp_count_custom_del = sapply(count.plot.df$x, FUN=getDelCount)
+    count.plot.df$read_count_custom_del = sapply(count.plot.df$x, FUN=getDelReadCount, udp.custom_del.df)
+  }
+  
   p.udp_count = ggplot(count.plot.df, aes(x=x, y=udp_count)) +
     geom_bar(stat="identity", fill="dodgerblue2") +
+    geom_bar(mapping = aes(x=x, y=udp_count_custom_del), stat="identity", fill="red") +
     simple_theme + theme(axis.title.x=element_blank()) + ylab("UDP count") +
     coord_cartesian(xlim=c(sites$start, sites$end))
   p.read_count = ggplot(count.plot.df, aes(x=x, y=read_count)) +
     geom_bar(stat="identity", fill="dodgerblue2") +
+    geom_bar(mapping = aes(x=x, y=read_count_custom_del), stat="identity", fill="red") +
     simple_theme + theme(axis.title.x=element_blank()) + ylab("Read count") +
     coord_cartesian(xlim=c(sites$start, sites$end))
   
@@ -1269,7 +1414,11 @@ getUDPPlot = function(udp.df, plot_title, sites) {
     p.udp_count = p.udp_count + geom_vline(xintercept = sites$cut_site, color="grey20", linetype = "longdash", alpha=0.5)
     p.read_count = p.read_count + geom_vline(xintercept = sites$cut_site, color="grey20", linetype = "longdash", alpha=0.5)
   }
-  
+  if (opt$custom_del_span) {
+    p.udp_dist = p.udp_dist + geom_vline(xintercept = opt$del_span_start, color="red", size=0.5, alpha=0.3) + geom_vline(xintercept = opt$del_span_end, color="red", size=0.5, alpha=0.3)
+    p.udp_count = p.udp_count + geom_vline(xintercept = opt$del_span_start, color="red", size=0.5, alpha=0.3) + geom_vline(xintercept = opt$del_span_end, color="red", size=0.5, alpha=0.3)
+    p.read_count = p.read_count + geom_vline(xintercept = opt$del_span_start, color="red", size=0.5, alpha=0.3) + geom_vline(xintercept = opt$del_span_end, color="red", size=0.5, alpha=0.3)
+  }
   p.full = egg::ggarrange(p.read_count, p.udp_count, p.udp_dist, ncol=1, heights=c(1,1,4),
                           top = plot_title, draw = F)
   return(p.full)
@@ -1288,7 +1437,8 @@ getDeletionProfilePlot = function(replicate.udp.df, sites, plot_title = NA, show
     (udp.char.matrix[,i] == '*')
   }
   getDelReadCount = function(i) {
-    sum(isPositionDel(i) * cur.df$num_reads)
+    # only count deletions in UDPs where count_udp == 1
+    sum(isPositionDel(i) * cur.df$num_reads * cur.df$count_udp)
   }
   unique_reps.df = unique(replicate.udp.df %>% dplyr::select(type, replicate))
   counts.list = list()
@@ -1312,7 +1462,7 @@ getDeletionProfilePlot = function(replicate.udp.df, sites, plot_title = NA, show
     #                           num_reads = sum(num_reads)) %>%
     #   arrange(-num_reads)
     merged.udp.df = summarise(replicate.udp.df %>% group_by(type, udp),
-                              num_reads = sum(num_reads)) %>%
+                              num_reads = sum(num_reads), count_udp = first(count_udp)) %>%
       arrange(-num_reads)
     unique_reps.df = unique(merged.udp.df %>% ungroup() %>% dplyr::select(type))
     counts.list = list()
@@ -1454,7 +1604,8 @@ getReplicateQCPlot = function(replicate.udp.df, region_title, max_udps = 20, min
     dplyr::arrange(-udp_total_reads)
   udp.avg.fractions = replicate.udp.filled.df %>%
     dplyr::group_by(udp) %>%
-    dplyr::summarise(avg_udp_fraction = mean(udp_fraction))
+    dplyr::summarise(avg_udp_fraction = mean(udp_fraction),
+                     avg_gdna_udp_fraction = mean(udp_fraction[type == "gDNA"]))
   replicate.udp.filled.df = replicate.udp.filled.df %>%
     dplyr::left_join(udp.avg.fractions, by = "udp") %>%
     dplyr::filter(avg_udp_fraction >= min_avg_udp_fraction)
@@ -1472,14 +1623,12 @@ getReplicateQCPlot = function(replicate.udp.df, region_title, max_udps = 20, min
     geom_line() + geom_point(size=3, alpha=0.5) +
     scale_color_manual(values = color_values, guide = F) +
     scale_shape_manual(values = shape_values) +
-    theme_bw() + xlab("UDP") + ylab("UDP fraction") +
+    theme_bw(10) + xlab("UDP") + ylab("UDP fraction") +
     ggtitle(sprintf("UDP fractions (min %.2g%%, %d UDPs)", min_avg_udp_fraction*100, num_udps))
   
   # Compute a statistic which, for each replicate, is the mean deviation
   # of the replicate's UDP fractions from the mean UDP fractions across
-  # replicates. This is easy to do if we use the mean UDP fraction across
-  # all replicates, but harder if we want to use the mean across all
-  # replicates *except* the focal one. First do it the easy way.
+  # replicates.
   replicate.udp_avg_deviation.df = replicate.udp.filled.df %>%
     dplyr::group_by(replicate) %>%
     dplyr::summarise(avg_deviation = mean(abs(udp_fraction - avg_udp_fraction)),
@@ -1487,20 +1636,48 @@ getReplicateQCPlot = function(replicate.udp.df, region_title, max_udps = 20, min
   p.udp_avg_deviation = ggplot(replicate.udp_avg_deviation.df, aes(x=replicate, y=avg_deviation, fill=type)) +
     geom_bar(stat = "identity", alpha = 0.8) +
     geom_text(aes(label = sprintf("%.2g%%", avg_deviation*100)), size = 2.4, position = position_stack(vjust = 0.5)) +
-    theme_bw() + theme(axis.text.x = element_text(angle = 30, hjust = 1), legend.title=element_blank()) +
+    theme_bw(10) + theme(axis.text.x = element_text(angle = 30, hjust = 1), axis.title.x=element_blank(), legend.title=element_blank()) +
     scale_fill_manual(values = color_values) +
-    ylab("Mean UDP fraction deviation") +
+    ylab("UDP frac deviation") +
     ggtitle("Mean UDP fraction deviation")
+  
+  # Compute the deviation relative to the mean of gDNA only
+  replicate.udp_avg_deviation.df = replicate.udp.filled.df %>%
+    dplyr::group_by(replicate) %>%
+    dplyr::summarise(avg_deviation = mean(abs(udp_fraction - avg_gdna_udp_fraction)),
+                     type = first(type))
+  p.udp_avg_deviation_gDNA = ggplot(replicate.udp_avg_deviation.df, aes(x=replicate, y=avg_deviation, fill=type)) +
+    geom_bar(stat = "identity", alpha = 0.8) +
+    geom_text(aes(label = sprintf("%.2g%%", avg_deviation*100)), size = 2.4, position = position_stack(vjust = 0.5)) +
+    theme_bw(10) + theme(axis.text.x = element_text(angle = 30, hjust = 1), axis.title.x=element_blank(), legend.title=element_blank()) +
+    scale_fill_manual(values = color_values) +
+    ylab("UDP frac deviation") +
+    ggtitle("Mean UDP fraction deviation (compared to gDNA)")
+  
+  # Compute the average RELATIVE deviation (CV) across UDPs for
+  # each replicate.
+  replicate.udp_rel_deviation.df = replicate.udp.filled.df %>%
+    dplyr::group_by(replicate) %>%
+    dplyr::summarise(avg_rel_deviation = mean(abs(udp_fraction / avg_gdna_udp_fraction - 1)),
+                     type = first(type))
+  p.udp_avg_deviation_relative = ggplot(replicate.udp_rel_deviation.df, aes(x=replicate, y=avg_rel_deviation, fill=type)) +
+    geom_bar(stat = "identity", alpha = 0.8) +
+    geom_text(aes(label = sprintf("%.0f%%", avg_rel_deviation*100)), size = 2.4, position = position_stack(vjust = 0.5)) +
+    theme_bw(10) + theme(axis.text.x = element_text(angle = 30, hjust = 1), legend.title=element_blank()) +
+    scale_fill_manual(values = color_values) +
+    ylab("UDP rel. deviation") +
+    ggtitle("Mean UDP fraction relative deviation (rel. to gDNA UDP mean)")
+  
   
   p.title = ggdraw() + draw_label(sprintf("%s replicate QC", region_title), fontface='bold')
   #p.replicate_qc = plot_grid(p.udp_fractions, p.udp_avg_deviation, ncol=1)
   #p.res = plot_grid(p.title, p.replicate_qc, ncol=1, rel_heights=c(0.1, 1)) # rel_heights values control title margins
-  p.res = egg::ggarrange(p.title, p.udp_fractions, p.udp_avg_deviation, ncol=1, heights=c(1,4,4), draw = F)
+  p.res = egg::ggarrange(p.title, p.udp_fractions, p.udp_avg_deviation, p.udp_avg_deviation_gDNA, p.udp_avg_deviation_relative, ncol=1, heights=c(1.5,4,4,4,4), draw = F)
   p.res
 }
 
 
-getUNSData = function(replicate.udp.df, sites, region_name, min_gDNA_count = 10, min_cDNA_count = 0) {
+getUNSDataOld = function(replicate.udp.df, replicates.df, sites, region_name, min_gDNA_count = 10, min_cDNA_count = 0) {
   udp_types = unique(replicate.udp.df$type)
   if (!("cDNA" %in% udp_types & "gDNA" %in% udp_types)) {
     return(NULL)
@@ -1596,15 +1773,20 @@ getUNSData = function(replicate.udp.df, sites, region_name, min_gDNA_count = 10,
   replicate.dels.df2 = replicate.dels.df %>%
     dplyr::left_join(wt.df %>% dplyr::select(replicate, wt_gDNA_count = gDNA_count, wt_cDNA_count = cDNA_count),
                      by = c("replicate"))
+  
+  N_cDNA = sum(replicates.df$type == "cDNA")
+  N_gDNA = sum(replicates.df$type == "gDNA")
   udp.dels.df = replicate.dels.df2 %>% group_by(udp) %>%
     summarise(gDNA_total_count = sum(gDNA_count, na.rm = T),
               cDNA_total_count = sum(cDNA_count, na.rm = T),
               mean_gDNA_count = mean(gDNA_count, na.rm = T),
               mean_cDNA_count = mean(cDNA_count, na.rm = T),
               cDNA_ratio = (mean_cDNA_count / wt_mean_cDNA_count),
-              sd_cDNA_ratio = vecRatioUncertaintySD(cDNA_count, wt_cDNA_count) / sqrt(n()),
+              sd_cDNA_ratio = sd(cDNA_count / wt_cDNA_count),
+              se_cDNA_ratio = sd_cDNA_ratio / sqrt(n()),
               gDNA_ratio = (mean_gDNA_count / wt_mean_gDNA_count),
-              sd_gDNA_ratio = vecRatioUncertaintySD(gDNA_count, wt_gDNA_count) / sqrt(n()),
+              sd_gDNA_ratio = sd(gDNA_count / wt_gDNA_count),
+              se_gDNA_ratio = sd_gDNA_ratio / sqrt(n()),
               is_hdr_allele = first(is_hdr_allele),
               is_wt_allele = first(is_wt_allele),
               has_crispr_deletion = first(has_crispr_deletion),
@@ -1612,20 +1794,133 @@ getUNSData = function(replicate.udp.df, sites, region_name, min_gDNA_count = 10,
               deletion_end = first(deletion_end),
               total_count = sum(total_count),
               uns = (cDNA_ratio / gDNA_ratio),
-              sd_uns = ratioUncertaintySD(cDNA_ratio, sd_cDNA_ratio, gDNA_ratio, sd_gDNA_ratio, 0)) %>%
+              uns_se = ratioUncertaintySD(cDNA_ratio, se_cDNA_ratio, gDNA_ratio, se_gDNA_ratio, 0),
+              uns_df_est = welch_df_estimate(sd_cDNA_ratio, N_cDNA, sd_gDNA_ratio, N_gDNA),
+              uns_confint = uns_se * qt(0.975, df = uns_df_est, lower.tail=T)) %>%
     dplyr::arrange(!is_wt_allele, !is_hdr_allele, -total_count)
   
   return(list(udp.dels.df = udp.dels.df, replicate.dels.df = replicate.dels.df))
 }
 
+getUNSData = function(replicate.udp.df, replicates.df, sites, region_name, min_gDNA_count = 10, min_cDNA_count = 0) {
+  udp_types = unique(replicate.udp.df$type)
+  if (!("cDNA" %in% udp_types & "gDNA" %in% udp_types)) {
+    return(NULL)
+  }
+  if (min_gDNA_count < 1) {
+    warning(sprintf("getUNSData: min_gDNA_count was set to %d, but must be an integer greater than zero. Setting it to 1.", min_gDNA_count))
+    min_gDNA_count = 1
+  }
+  
+  # We need to have the same number of replicates for every UDP. We do this
+  # by spreading the replicates out into columns (cDNA_1, cDNA_2, etc.), with
+  # fill = 0 for when a replicate is missing, and then gather back into separate
+  # replicates
+  getType = function(type_rep) { as.character(sapply(type_rep, FUN=function(x) strsplit(x, "^" , fixed=T)[[1]][1])) }
+  getReplicate = function(type_rep) { as.character(sapply(type_rep, FUN=function(x) strsplit(x, "^" , fixed=T)[[1]][2])) }
+  replicate.udp.filled.df = replicate.udp.df %>%
+    dplyr::mutate(type_replicate = paste(type, replicate, sep="^")) %>%
+    dplyr::select(-name, -replicate, -type, -avg_seq_length, -avg_mismatch_count) %>%
+    tidyr::spread(type_replicate, num_reads, fill = 0) %>%
+    tidyr::gather(key="type_replicate", value="num_reads", -(udp:deletion2_end)) %>%
+    dplyr::mutate(type = getType(type_replicate),
+                  replicate = getReplicate(type_replicate)) %>%
+    dplyr::select(-type_replicate)
+  
+  # We use the same function to calculate stats for all UDPs as we do for the HDR allele.
+  # For this we need a column with num_wt_reads.
+  replicate.wt_reads.df = replicate.udp.filled.df %>%
+    dplyr::filter(is_wt_allele, !is_hdr_allele) %>%
+    dplyr::select(replicate, type, num_wt_reads = num_reads) %>%
+    dplyr::group_by(replicate, type) %>%
+    dplyr::summarise(num_wt_reads = sum(num_wt_reads)) %>%
+    ungroup()
+  
+  # Results not likely to be stable if the WT count is too low
+  all_wt_gDNA_count = sum(replicate.wt_reads.df %>% dplyr::filter(type == "gDNA") %>% .$num_wt_reads)
+  all_wt_cDNA_count = sum(replicate.wt_reads.df %>% dplyr::filter(type == "cDNA") %>% .$num_wt_reads)
+  if (all_wt_gDNA_count < 100) {
+    warning(sprintf("%s wild-type gDNA count (%d) is low and may lead to unstable estimates.", region_name, all_wt_gDNA_count))
+    if (all_wt_gDNA_count < 1) {
+      warning(sprintf("%s wild-type gDNA count is zero!", region_name))
+      return(NULL)
+    }
+    if (all_wt_gDNA_count < min_gDNA_count) {
+      warning(sprintf("%s wild-type gDNA count (%d) is below minimum (%d).", region_name, all_wt_gDNA_count, min_gDNA_count))
+      return(NULL)
+    }
+  }
+  if (all_wt_cDNA_count < 100) {
+    warning(sprintf("%s wild-type cDNA count (%d) is low and may lead to unstable estimates.", region_name, all_wt_cDNA_count))
+    if (all_wt_cDNA_count < 1) {
+      warning(sprintf("%s wild-type cDNA count is zero!", region_name))
+      return(NULL)
+    }
+  }
 
-getUNSPlot = function(replicate.udp.df, sites, plot_title, min_gDNA_count = 10, min_cDNA_count = 0, max_udps = 40) {
+  # Spread num_reads out so that we have a column for gDNA and cDNA. For a given
+  # replicate/UDP, one of these will be zero in each row.
+  replicate.udp.filled.spread.df = replicate.udp.filled.df %>%
+    dplyr::mutate(type2 = type) %>%
+    spread(type2, num_reads, fill = 0) %>%
+    dplyr::rename(gDNA_count = gDNA, cDNA_count = cDNA)
+
+  # Get total read counts by UDP
+  udp.total_counts.df = replicate.udp.filled.spread.df %>% 
+    group_by(udp) %>%
+    dplyr::summarise(gDNA_total_count = sum(gDNA_count),
+                     cDNA_total_count = sum(cDNA_count),
+                     total_count = gDNA_total_count + cDNA_total_count)
+  
+  # Following this, we have a row per replicate per UDP, with counts for cDNA
+  # and gDNA, which are zero if the UDP wasn't observed in the replicate.
+  replicate.dels.df = replicate.udp.filled.spread.df %>%
+    dplyr::left_join(udp.total_counts.df, by="udp") %>%
+    dplyr::left_join(replicate.wt_reads.df %>% dplyr::select(-type), by="replicate") %>%
+    dplyr::filter(is_hdr_allele | is_wt_allele | (has_crispr_deletion & gDNA_total_count >= min_gDNA_count & cDNA_total_count >= min_cDNA_count)) %>%
+    dplyr::arrange(!is_wt_allele, !is_hdr_allele, -total_count)
+  
+  N_cDNA = sum(replicate.wt_reads.df$type == "cDNA")
+  N_gDNA = sum(replicate.wt_reads.df$type == "gDNA")
+  
+  udp.dels.df = replicate.dels.df %>% group_by(udp) %>%
+    dplyr::filter(!is_wt_allele) %>%
+    summarise(gDNA_total_count = first(gDNA_total_count),
+              cDNA_total_count = first(cDNA_total_count),
+              total_count = first(total_count),
+              mean_gDNA_count = mean(gDNA_count[type == "gDNA"], na.rm = T),
+              mean_cDNA_count = mean(cDNA_count[type == "cDNA"], na.rm = T),
+              cDNA_ratio = mean(cDNA_count[type == "cDNA"] / num_wt_reads[type == "cDNA"], na.rm = T),
+              sd_cDNA_ratio = sd(cDNA_count[type == "cDNA"] / num_wt_reads[type == "cDNA"], na.rm = T),
+              se_cDNA_ratio = sd_cDNA_ratio / sqrt(n()),
+              gDNA_ratio = mean(gDNA_count[type == "gDNA"] / num_wt_reads[type == "gDNA"], na.rm = T),
+              sd_gDNA_ratio = sd(gDNA_count[type == "gDNA"] / num_wt_reads[type == "gDNA"], na.rm = T),
+              se_gDNA_ratio = sd_gDNA_ratio / sqrt(n()),
+              is_hdr_allele = first(is_hdr_allele),
+              is_wt_allele = first(is_wt_allele),
+              has_crispr_deletion = first(has_crispr_deletion),
+              deletion_start = first(deletion_start),
+              deletion_end = first(deletion_end),
+              ratio_est = list(getUDPRatioEstimate(cDNA_UDP_counts = cDNA_count[type == "cDNA"], cDNA_wt_counts = num_wt_reads[type == "cDNA"],
+                                                   gDNA_UDP_counts = gDNA_count[type == "gDNA"], gDNA_wt_counts = num_wt_reads[type == "gDNA"])),
+              uns = ratio_est[[1]]$effect,
+              uns_se = ratio_est[[1]]$effect_sd,
+              uns_df_est = welch_df_estimate(sd_cDNA_ratio, N_cDNA, sd_gDNA_ratio, N_gDNA),
+              uns_confint = uns_se * qt(0.975, df = uns_df_est, lower.tail=T)) %>%
+    dplyr::select(-ratio_est) %>%
+    dplyr::arrange(!is_wt_allele, !is_hdr_allele, -total_count)
+
+  return(list(udp.dels.df = udp.dels.df, replicate.dels.df = replicate.dels.df))
+}
+
+
+getUNSPlot = function(replicate.udp.df, replicates.df, sites, plot_title, min_gDNA_count = 10, min_cDNA_count = 0, max_udps = 40) {
   udp_types = unique(replicate.udp.df$type)
   if (!("cDNA" %in% udp_types & "gDNA" %in% udp_types)) {
     return(egg::ggarrange(textPlot("Cannot make UNS plot without both cDNA and gDNA replicates"), top=plot_title, draw = F))
   }
   
-  uns_res = getUNSData(replicate.udp.df, sites, region_name=plot_title, min_gDNA_count, min_cDNA_count)
+  uns_res = getUNSData(replicate.udp.df, replicates.df, sites, region_name=plot_title, min_gDNA_count, min_cDNA_count)
   udp.dels.df = uns_res$udp.dels.df %>% dplyr::filter(!is_wt_allele)
   udp.del_replicates.df = uns_res$replicate.dels.df %>% dplyr::filter(!is_wt_allele)
   
@@ -1708,22 +2003,15 @@ getUNSPlot = function(replicate.udp.df, sites, plot_title, min_gDNA_count = 10, 
   # Left side of the plot, showing UDP-normalised scores (UNS)
   uns.plot.df = data.frame(y = label(ddata)$x,
                            x = 0,
-                           log2uns = log2(udp.dels.df$uns + 1),
-                           cDNA_lower = udp.dels.df$uns < 1,
-                           gDNA = udp.dels.df$gDNA_total_count,
-                           log2uns_conf_hi = log2(udp.dels.df$uns + 1.96 * udp.dels.df$sd_uns + 1),
-                           log2uns_conf_lo = log2(udp.dels.df$uns + 1.96 * udp.dels.df$sd_uns + 1))
-  uns.plot.df = data.frame(y = label(ddata)$x,
-                           x = 0,
                            uns = udp.dels.df$uns,
                            cDNA_lower = udp.dels.df$uns < 1,
                            gDNA = udp.dels.df$gDNA_total_count,
-                           uns_conf_hi = udp.dels.df$uns + 1.96 * udp.dels.df$sd_uns,
-                           uns_conf_lo = udp.dels.df$uns - 1.96 * udp.dels.df$sd_uns)
+                           uns_conf_hi = udp.dels.df$uns + udp.dels.df$uns_confint,
+                           uns_conf_lo = udp.dels.df$uns - udp.dels.df$uns_confint)
   
-  uns.replicates.plot.df = udp.del_replicates.df %>% 
-    dplyr::select(udp, uns, gDNA_count) %>%
-    dplyr::left_join(udp.order.map, by="udp")
+  # uns.replicates.plot.df = udp.del_replicates.df %>% 
+  #   dplyr::select(udp, uns, gDNA_count) %>%
+  #   dplyr::left_join(udp.order.map, by="udp")
   
   maxDotSize = 5.5
   if (numUDPs > 60) {
@@ -1776,19 +2064,34 @@ fitVarianceComponents = function(replicate.udp.spread.df, replicates.type.df) {
   replicate.udp.spread.df = replicate.udp.spread.df %>% as.data.frame()
   rownames(replicate.udp.spread.df) = replicate.udp.spread.df$udp
   
-  # Get all columns of the replicate dataframe which begin with "replicate"
+  # Get all columns of the replicate dataframe which begin with "replicate",
+  # but ensure that they have more than one factor level
   replicate_cols = colnames(replicates.type.df)[grepl("^replicate_", colnames(replicates.type.df))]
+  remove_cols = c()
   for (col in replicate_cols) {
     replicates.type.df[, col] = as.factor(replicates.type.df[, col, drop=T])
+    if (length(unique(replicates.type.df[, col, drop=T])) <= 1) {
+      warning(sprintf("Column %s cannot be used in variance components analysis since it has only one level for region %s.", col, replicates.type.df$name[1]))
+      remove_cols = c(col, remove_cols)
+    }
+  }
+  replicate_cols = setdiff(replicate_cols, remove_cols)
+  if (length(replicate_cols) == 0) {
+    warning(sprintf("Region %s: no replicate variables are available to use in variance components analysis.", replicates.type.df$name[1]))
+    return(NULL)
   }
   
-  #form <- ~ (1|replicate_cDNA)
-  #vp <- fitExtractVarPartModel(replicate.udp.spread.df %>% dplyr::select(-udp), form, replicates.type.df)
   formulaStr = sprintf("~ (1|%s)", replicate_cols[1])
   for (col in replicate_cols[-1]) {
     formulaStr = sprintf("%s + (1|%s)", formulaStr, col)
   }
-  vp <- fitExtractVarPartModel(exprObj = replicate.udp.spread.df %>% dplyr::select(-udp),
+  
+  # IMPORTANT: Make sure that the columns of the expression input to
+  # fitExtractVarPartMoel are in the same order of samples as the rows
+  # of the "data" input!
+  replicate.udp.expr = replicate.udp.spread.df[, replicates.type.df$replicate]
+  
+  vp <- fitExtractVarPartModel(exprObj = replicate.udp.expr,
                                formula = as.formula(formulaStr),
                                data = replicates.type.df,
                                useWeights = F)
@@ -1796,10 +2099,9 @@ fitVarianceComponents = function(replicate.udp.spread.df, replicates.type.df) {
   vp
 }
 
-doVariancePartitionPlot = function(vp, residuals=T, color = NA) {
-  vp.df = data.frame(vp) %>% 
-    mutate(udp = rownames(vp)) %>%
-    gather(variable, variance, -udp) %>%
+doVariancePartitionPlot = function(vp.df, residuals=T, color = NA) {
+  vp.df = vp.df %>%
+    gather(variable, variance, -udp, -name) %>%
     mutate(pctvariance = variance*100)
   
   if (!residuals) {
@@ -1832,11 +2134,14 @@ doVariancePartitionPlot = function(vp, residuals=T, color = NA) {
   return(p)
 }
 
-getVarianceComponentsPlots = function(replicate.udp.df, replicates.df, method = "read_fraction", min_udp_total_count = 100, min_udp_fraction = 0.001) {
+getVarianceComponentsPlots = function(replicate.udp.df, replicates.df, method = "read_fraction", min_udp_total_count = 100, min_udp_fraction = 0.001, plot_title = NULL) {
   replicate_cols = colnames(replicates.df)[grepl("^replicate_", colnames(replicates.df))]
   if (length(replicate_cols) < 1) {
     stop("--variance_analysis option given but no columns beginning with 'replicate_' found in the --replicates file")
   }
+  
+  # Subset replicate info dataframe to those replicates in replicate.udp.df
+  replicates.df = replicates.df %>% dplyr::filter(replicate %in% unique(replicate.udp.df$replicate))
   
   filterUDPs = function(udp.df, min_udp_total_count, min_udp_fraction) {
     # Spread the replicates out into columns (cDNA_1, cDNA_2, etc.), with
@@ -1877,7 +2182,7 @@ getVarianceComponentsPlots = function(replicate.udp.df, replicates.df, method = 
       value = log(replicate.udp.df$num_reads + 1)
     }
     else if (method == "deviation_from_poisson") {
-      mean_reads_per_udp.df= replicate.udp.df %>% dplyr::group_by(udp) %>%
+      mean_reads_per_udp.df = replicate.udp.df %>% dplyr::group_by(udp) %>%
         dplyr::summarise(mean_reads = mean(num_reads))
       replicate.udp.df = replicate.udp.df %>% dplyr::left_join(mean_reads_per_udp.df, by="udp")
       value = abs(replicate.udp.df$num_reads - replicate.udp.df$mean_reads) / sqrt(replicate.udp.df$mean_reads)
@@ -1887,51 +2192,70 @@ getVarianceComponentsPlots = function(replicate.udp.df, replicates.df, method = 
     value
   }
   
+  # Function to get variance components result for cDNA and gDNA for a single region
+  getRegionVarianceComponents = function(replicate.udp.df, replicates.type.df, dnaType, min_udp_total_count, min_udp_fraction) {
+    replicate.udp.type.df = filterUDPs(replicate.udp.df %>% dplyr::filter(type == dnaType),
+                                       min_udp_total_count = min_udp_total_count, min_udp_fraction = min_udp_fraction)
+    
+    replicate.udp.type.df$value = getValueForVariance(replicate.udp.type.df, method)
+    
+    # Spread the replicates out into columns (cDNA_1, cDNA_2, etc.), with
+    # fill = 0 for when a replicate has no value for a given UDP
+    replicate.udp.type.spread.df = replicate.udp.type.df %>%
+      dplyr::select(udp, replicate, value) %>%
+      tidyr::spread(replicate, value, fill = 0)
+    udpFraction = rowMeans(replicate.udp.type.spread.df %>% dplyr::select(-udp))
+    vp = fitVarianceComponents(replicate.udp.spread.df = replicate.udp.type.spread.df[udpFraction > 0.001,],
+                               replicates.type.df = replicates.type.df %>% dplyr::filter(type == dnaType))
+    vp.df = NULL
+    if (!is.null(vp)) {
+      vp.df = data.frame(vp) %>% 
+        mutate(udp = rownames(vp))
+    }
+    vp.df
+  }
+  
   #########################################################################
   dnaType = "cDNA"
-  replicate.udp.cDNA.df = filterUDPs(replicate.udp.df %>% dplyr::filter(type == dnaType),
-                                     min_udp_total_count = min_udp_total_count, min_udp_fraction = min_udp_fraction)
+  # Get variance components separately for each region (if there's more than one)
+  by.vp.dfs = by(replicate.udp.df, replicate.udp.df$name, FUN = getRegionVarianceComponents,
+                 replicates.type.df = replicates.df %>% dplyr::filter(type == dnaType),
+                 dnaType = dnaType, min_udp_total_count, min_udp_fraction)
+  # Merge each region's variance components result together
+  for (i in 1:length(by.vp.dfs)) {
+    by.vp.dfs[[i]]$name = names(by.vp.dfs)[i]
+  }
+  vp.cDNA.df = bind_rows(lapply(by.vp.dfs, function(x) x))
   
-  replicate.udp.cDNA.df$value = getValueForVariance(replicate.udp.cDNA.df, method)
+  if (nrow(vp.cDNA.df) <= 0) {
+    p.cDNA = textPlot("Cannot make variance components plot.")
+    cDNA.summary.df = data.frame(x="empty")
+    cDNA_note = ""
+  } else {
+    p.cDNA = doVariancePartitionPlot(vp.cDNA.df) + ggtitle(dnaType)
+    cDNA.summary.df = variancePartitionSummaryTable(vp.cDNA.df %>% dplyr::select(-name, -udp))
+    cDNA_note = sprintf("Based on %d UDPs with >%d reads, >%.1g%% udp fraction", nrow(vp.cDNA.df), min_udp_total_count, min_udp_fraction*100)
+  }
   
-  # Spread the replicates out into columns (cDNA_1, cDNA_2, etc.), with
-  # fill = 0 for when a replicate has no value for a given UDP
-  replicate.udp.cDNA.spread.df = replicate.udp.cDNA.df %>%
-    dplyr::select(udp, replicate, value) %>%
-    tidyr::spread(replicate, value, fill = 0)
-  udpFraction = rowMeans(replicate.udp.cDNA.spread.df %>% dplyr::select(-udp))
-  #print(sprintf("Variance components: fraction of cDNA reads in UDPs > 0.1%% prevalence = %.3g", sum(udpFraction[udpFraction > 0.001])))
-  vp = fitVarianceComponents(replicate.udp.cDNA.spread.df[udpFraction > 0.001,],
-                             replicates.df %>% dplyr::filter(type == dnaType))
-  vp.cDNA.df = data.frame(vp)
-  # value_avg.df = replicate.udp.cDNA.df %>% group_by(udp) %>% dplyr::summarise(value_avg = mean(value))
-  # vp.cDNA.df$udp = rownames(vp)
-  # vp.cDNA.df = vp.cDNA.df %>% dplyr::left_join(value_avg.df, by="udp")
-  p.cDNA = doVariancePartitionPlot(vp, color="red") + ggtitle(dnaType)
-  
-  #########################################################################
   # Do the same for gDNA
   dnaType = "gDNA"
-  replicate.udp.gDNA.df = filterUDPs(replicate.udp.df %>% dplyr::filter(type == dnaType),
-                                     min_udp_total_count = min_udp_total_count, min_udp_fraction = min_udp_fraction)
-  replicate.udp.gDNA.df$value = getValueForVariance(replicate.udp.gDNA.df, method)
+  by.vp.dfs = by(replicate.udp.df, replicate.udp.df$name, FUN = getRegionVarianceComponents,
+                 replicates.type.df = replicates.df %>% dplyr::filter(type == dnaType),
+                 dnaType = dnaType, min_udp_total_count, min_udp_fraction)
+  for (i in 1:length(by.vp.dfs)) {
+    by.vp.dfs[[i]]$name = names(by.vp.dfs)[i]
+  }
+  vp.gDNA.df = bind_rows(lapply(by.vp.dfs, function(x) x))
   
-  replicate.udp.gDNA.spread.df = replicate.udp.gDNA.df %>%
-    dplyr::select(udp, replicate, value) %>%
-    tidyr::spread(replicate, value, fill = 0)
-  udpFraction = rowMeans(replicate.udp.gDNA.spread.df %>% dplyr::select(-udp))
-  #print(sprintf("Variance components: fraction of gDNA reads in UDPs > 0.1%% prevalence = %.3g", sum(udpFraction[udpFraction > 0.001])))
-  vp = fitVarianceComponents(replicate.udp.gDNA.spread.df[udpFraction > 0.001,],
-                             replicates.df %>% dplyr::filter(type == dnaType))
-  
-  vp.gDNA.df = data.frame(vp)
-  # value_avg.df = replicate.udp.gDNA.df %>% group_by(udp) %>% dplyr::summarise(value_avg = mean(value))
-  # vp.gDNA.df$udp = rownames(vp)
-  # vp.gDNA.df = vp.gDNA.df %>% dplyr::left_join(value_avg.df, by="udp") %>% dplyr::select(-udp)
-  p.gDNA = doVariancePartitionPlot(vp, color="blue") + ggtitle(dnaType)
-  
-  cDNA.summary.df = variancePartitionSummaryTable(vp.cDNA.df)
-  gDNA.summary.df = variancePartitionSummaryTable(vp.gDNA.df)
+  if (nrow(vp.gDNA.df) <= 0) {
+    p.gDNA = textPlot("Cannot make variance components plot.")
+    gDNA.summary.df = data.frame(x="empty")
+    gDNA_note = ""
+  } else {
+    p.gDNA = doVariancePartitionPlot(vp.gDNA.df, color="blue") + ggtitle(dnaType)
+    gDNA.summary.df = variancePartitionSummaryTable(vp.gDNA.df %>% dplyr::select(-name, -udp))
+    gDNA_note = sprintf("Based on %d UDPs with >%d reads, >%.1g%% udp fraction", nrow(vp.gDNA.df), min_udp_total_count, min_udp_fraction*100)
+  }
   
   ggThemeBlank = theme_bw() + theme(panel.grid.minor = element_blank(), panel.grid.major = element_blank(),
                                     axis.text = element_blank(), axis.title = element_blank(), axis.ticks = element_blank(),
@@ -1940,17 +2264,18 @@ getVarianceComponentsPlots = function(replicate.udp.df, replicates.df, method = 
                                             colhead = list(fg_params=list(cex = 0.75)),
                                             rowhead = list(fg_params=list(cex = 0.75)))
   
+  if (is.null(plot_title)) {
+    plot_title = sprintf("%s variance components", replicates.df$name[1])
+  }
   p.stats = ggplot(data.frame(x=1:10, y=1:10), aes(x,y)) + geom_blank() + ggThemeBlank +
     annotation_custom(tableGrob(cDNA.summary.df, theme = myTableTheme), xmin=1, xmax=5, ymin=2, ymax=8.5) +
     annotation_custom(tableGrob(gDNA.summary.df, theme = myTableTheme), xmin=6, xmax=10, ymin=2, ymax=8.5) +
     # annotate("text", x=3.5, y=8, label = "cDNA", hjust = 0.5, fontface = 2, size = 5) +
     # annotate("text", x=7.5, y=8, label = "gDNA", hjust = 0.5, fontface = 2, size = 5) +
-    annotate("text", x=5, y=10, label = sprintf("%s variance components", replicates.df$name[1]), vjust = 1, fontface = 2, size = 5) +
+    annotate("text", x=5, y=10, label = plot_title, vjust = 1, fontface = 2, size = 5) +
     annotate("text", x=5, y=9, label = sprintf("Method = %s", method), vjust = 1, size = 3) +
-    annotate("text", x=1, y=1, label = sprintf("Based on %d UDPs with >%d reads, >%.1g%% udp fraction", nrow(vp.cDNA.df), min_udp_total_count, min_udp_fraction*100),
-             hjust = 0, vjust = 0, size = 3) +
-    annotate("text", x=6, y=1, label = sprintf("Based on %d UDPs with >%d reads, >%.1g%% udp fraction", nrow(vp.gDNA.df), min_udp_total_count, min_udp_fraction*100),
-             hjust = 0, vjust = 0, size = 3)
+    annotate("text", x=1, y=1, label = cDNA_note, hjust = 0, vjust = 0, size = 3) +
+    annotate("text", x=6, y=1, label = gDNA_note, hjust = 0, vjust = 0, size = 3)
   
   #egg::ggarrange(p.stats, grid.arrange(p.cDNA, p.gDNA, ncol=2), nrow = 1)
   plot_grid(p.stats, plot_grid(p.cDNA, p.gDNA, nrow = 1), nrow = 2, rel_heights = c(0.4, 0.6))
@@ -2016,6 +2341,9 @@ getPowerPlots = function(replicate.udp.df, replicates.df, titlestr = "", min_udp
   # An error may occur in NLS, so we need to catch it
   res = tryCatch({
     # First fit a curve to a table of CV vs. mean read count.
+    ## TODO: consider changing the modeling form to a free exponent, e.g.
+    ## udp_frac_cv ~ a + b * udp_frac_mean^c
+    ## along with constraints such as a > 0, b > 0, -1 <= c <= 0
     cDNA.stats.df = getUDPStats(replicate.udp.df, "cDNA", min_udp_total_count)
     fit.cDNA <- nls(udp_frac_cv ~ a + b * (1/sqrt(udp_frac_mean)), data = cDNA.stats.df,
                     weights = log(cDNA.stats.df$udp_mean), start = list(a = 0, b = 1))
@@ -2307,21 +2635,199 @@ getMismatchCharsCount = function(s_chars, ref_chars) {
   sum(s_chars[letterPos] != ref_chars[letterPos])
 }
 
-getHDRRatioEstimate = function(stats.df, colToCompare = "num_hdr_reads") {
+getUDPRatioEstimate = function(cDNA_UDP_counts, cDNA_wt_counts, gDNA_UDP_counts, gDNA_wt_counts) {
+  N_cDNA = length(cDNA_wt_counts)
+  N_gDNA = length(gDNA_wt_counts)
+  
+  # There are two ways that we could calculate the UDP:WT ratio (for both cDNA and gDNA).
+  # One is to compute it for each replicate and take the average. The other is to sum
+  # UDP counts for replicate, and divide by the summed WT counts for replicate. This latter
+  # method effectively weights the ratio by the number of reads in each replicate. The main
+  # problem with this method is that it gives a value that will differ from the one we
+  # are assuming in our statistical test further down (t test). For example, our confidence
+  # interval may include 1 (no effect), but our p value gives a significant result. For this
+  # reason I use the unweighted UDP:WT ratios. It has the downside of not using all of the
+  # reads across the replicates "effectively", but if outliers are excluded properly, then
+  # it should be a more robust measure of the true effect.
+  cDNA_ratio = mean(cDNA_UDP_counts / cDNA_wt_counts)
+  gDNA_ratio = mean(gDNA_UDP_counts / gDNA_wt_counts)
+  # cDNA_ratio = mean(cDNA_UDP_counts) / mean(cDNA_wt_counts)
+  # gDNA_ratio = mean(gDNA_UDP_counts) / mean(gDNA_wt_counts)
+  # sd_cDNA_ratio = vecRatioUncertaintySD(cDNA.df[,colToCompare], cDNA.df$num_wt_reads)
+  # sd_gDNA_ratio = vecRatioUncertaintySD(gDNA.df[,colToCompare], gDNA.df$num_wt_reads)
+  sd_cDNA_ratio = sd(cDNA_UDP_counts / cDNA_wt_counts)
+  sd_gDNA_ratio = sd(gDNA_UDP_counts / gDNA_wt_counts)
+  SE_cDNA_ratio = sd_cDNA_ratio / sqrt(N_cDNA)
+  SE_gDNA_ratio = sd_gDNA_ratio / sqrt(N_gDNA)
+  
+  effect = cDNA_ratio / gDNA_ratio
+  effect_se = ratioUncertaintySD(cDNA_ratio, SE_cDNA_ratio, gDNA_ratio, SE_gDNA_ratio, 0)
+  
+  # I was unsure whether our estimate of this score represents a Z score (normal distribution)
+  # or a T score. But assuming that it is a T score corresponds with the result you would
+  # get from a linear model, and makes more sense given that we have a finite sample.
+  #score = (effect - 1) / effect_se
+  #pvalue = 2 * pnorm(-abs(score))
+  #pvalue = 2*pt(score, df=38, lower.tail=F)
+  
+  # Use a Welch two-sample T test to see whether the UDP:WT ratio differs
+  # in cDNA vs. gDNA. This test accounts for there being different variance
+  # in cDNA and gDNA.
+  res = t.test(cDNA_UDP_counts / cDNA_wt_counts,
+               gDNA_UDP_counts / gDNA_wt_counts,
+               alternative = "two.sided", var.equal = F)
+  
+  # Use a t distribution to determine the confidence interval. We estimate
+  # the degrees of freedom using the Welch T test approximation. This gives
+  # a wider confidence interval than if we assumed a normal distribution or
+  # a standard T distribution.
+  df_estimated = welch_df_estimate(sd_cDNA_ratio, N_cDNA, sd_gDNA_ratio, N_gDNA)
+  tScore_alpha_0.05 = qt(0.975, df = df_estimated, lower.tail=T)
+  effect_confint = tScore_alpha_0.05 * effect_se
+  
+  return(list(effect = effect, effect_sd = effect_se, effect_confint = effect_confint, pval = res$p.value))
+}
+
+getHDRRatioEstimate = function(udp.df, colToCompare = "num_hdr_reads") {
+  cDNA.df = udp.df %>% dplyr::filter(type == "cDNA") %>% as.data.frame()
+  gDNA.df = udp.df %>% dplyr::filter(type == "gDNA") %>% as.data.frame()
+  getUDPRatioEstimate(cDNA_UDP_counts = cDNA.df[,colToCompare], cDNA_wt_counts = cDNA.df$num_wt_reads,
+                      gDNA_UDP_counts = gDNA.df[,colToCompare], gDNA_wt_counts = gDNA.df$num_wt_reads)
+}
+
+getHDRRatioEstimateOld = function(stats.df, colToCompare = "num_hdr_reads") {
+  cDNA.df = stats.df %>% dplyr::filter(type == "cDNA") %>% as.data.frame()
+  gDNA.df = stats.df %>% dplyr::filter(type == "gDNA") %>% as.data.frame()
+  N_cDNA = nrow(cDNA.df)
+  N_gDNA = nrow(gDNA.df)
+  
+  cDNA_ratio = mean(cDNA.df[,colToCompare]) / mean(cDNA.df$num_wt_reads)
+  gDNA_ratio = mean(gDNA.df[,colToCompare]) / mean(gDNA.df$num_wt_reads)
+  # sd_cDNA_ratio = vecRatioUncertaintySD(cDNA.df[,colToCompare], cDNA.df$num_wt_reads)
+  # sd_gDNA_ratio = vecRatioUncertaintySD(gDNA.df[,colToCompare], gDNA.df$num_wt_reads)
+  sd_cDNA_ratio = sd(cDNA.df[,colToCompare] / cDNA.df$num_wt_reads)
+  sd_gDNA_ratio = sd(gDNA.df[,colToCompare] / gDNA.df$num_wt_reads)
+  SE_cDNA_ratio = sd_cDNA_ratio / sqrt(N_cDNA)
+  SE_gDNA_ratio = sd_gDNA_ratio / sqrt(N_gDNA)
+  
+  effect = cDNA_ratio / gDNA_ratio
+  effect_se = ratioUncertaintySD(cDNA_ratio, SE_cDNA_ratio, gDNA_ratio, SE_gDNA_ratio, 0)
+  
+  # I was unsure whether our estimate of this score represents a Z score (normal distribution)
+  # or a T score. But assuming that it is a T score corresponds with the result you would
+  # get from a linear model, and makes more sense given that we have a finite sample.
+  #score = (effect - 1) / effect_se
+  #pvalue = 2 * pnorm(-abs(score))
+  #pvalue = 2*pt(score, df=38, lower.tail=F)
+  
+  # Use a Welch two-sample T test to see whether the UDP:WT ratio differs
+  # in cDNA vs. gDNA. This test accounts for there being different variance
+  # in cDNA and gDNA.
+  res = t.test(cDNA.df[,colToCompare] / cDNA.df$num_wt_reads,
+               gDNA.df[,colToCompare] / gDNA.df$num_wt_reads,
+               alternative = "two.sided", var.equal = F)
+  
+  # Use a t distribution to determine the confidence interval. We estimate
+  # the degrees of freedom using the Welch T test approximation. This gives
+  # a wider confidence interval than if we assumed a normal distribution or
+  # a standard T distribution.
+  df_estimated = welch_df_estimate(sd_cDNA_ratio, N_cDNA, sd_gDNA_ratio, N_gDNA)
+  tScore_alpha_0.05 = qt(0.975, df = df_estimated, lower.tail=T)
+  effect_confint = tScore_alpha_0.05 * effect_se
+  
+  return(list(effect = effect, effect_sd = effect_se, effect_confint = effect_confint, pval = res$p.value))
+}
+
+welch_df_estimate = function(sdA, nA, sdB, nB) {
+  round((sdA^2/nA + sdB^2/nB)^2 / ( (sdA^2/nA)^2 / (nA - 1) + (sdB^2/nB)^2 / (nB - 1) ))
+}
+
+getHDRRatioEstimate_lmer = function(stats.df, colToCompare = "num_hdr_reads") {
+  # Test using a linear model to determine the effect of "cDNA", i.e.
+  # whether it differs from gDNA. We first compute the UDP:WT ratio
+  # for each sample (both cDNA and gDNA).
+  stats.df$type = factor(stats.df$type, levels=c("gDNA", "cDNA"))
+  stats.df$ratio_cmp = stats.df[,colToCompare] / stats.df$num_wt_reads
+  
+  #lm_res = lm(ratio_cmp ~ type, data = stats.df, weights = stats.df$num_reads)
+  lm_res = lm(ratio_cmp ~ type, data = stats.df)
+  lm_summary = summary(lm_res)
+  #ggplot(stats.df, aes(x=type, y=ratio_cmp)) + geom_boxplot(outlier.shape=NA) + geom_jitter(width=0.25)
+  
+  # Get the values for parameters from the linear model result
+  gDNA_ratio_est = lm_summary$coefficients["(Intercept)", "Estimate"]
+  cDNA_ratio_est = gDNA_ratio_est + lm_summary$coefficients["typecDNA", "Estimate"]
+  cDNA_gDNA_ratio_est = cDNA_ratio_est / gDNA_ratio_est
+  se_gDNA_ratio = lm_summary$coefficients["(Intercept)", "Std. Error"]
+  se_cDNA_ratio = lm_summary$coefficients["typecDNA", "Std. Error"]
+  se_cDNA_gDNA_ratio = sqrt( cDNA_gDNA_ratio_est^2 * ((se_gDNA_ratio/gDNA_ratio_est)^2 + (se_cDNA_ratio/cDNA_ratio_est)^2) )
+
+  # Propagation of uncertainty formula for calculating the SE of the
+  # cDNA:gDNA ratio
+  se_cDNA_gDNA = sqrt( (sd(stats.df %>% dplyr::filter(type == "gDNA") %>% .$ratio_cmp)^2 / sum(stats.df$type == "gDNA")) + (sd(stats.df %>% dplyr::filter(type == "cDNA") %>% .$ratio_cmp)^2 / sum(stats.df$type == "cDNA")) )
+
+  
+  score = (cDNA_ratio_est - gDNA_ratio_est) / se_cDNA_ratio
+  se_cDNA_gDNA_ratio = cDNA_gDNA_ratio_est * (se_cDNA_ratio/cDNA_ratio_est)
+  score2 = (cDNA_gDNA_ratio_est - 1) / se_cDNA_gDNA_ratio
+  
+  pvalue = 2 * pnorm(-abs(score)) # assume normal distribution
+  pchisq(score^2, df=38, lower.tail=F) # 
+  2*pt(score, df=38, lower.tail=F) # assume T distribution
+
+  # A formula I found earlier for determining the "effective" degrees of freedom
+  # for a T test with unequal variances. I think this is basically the same as
+  # Welch's T test.
+  df = round((se_cDNA_ratio + se_gDNA_ratio)^2 / ( ( (sd_cDNA_ratio^2/nrow(cDNA.df))^2 / (nrow(cDNA.df) - 1) ) + ((sd_gDNA_ratio^2/nrow(gDNA.df))^2 / (nrow(gDNA.df) - 1) ) ))
+  
+  # Use a mixed model to account for batch effects, e.g. of cDNA generation,
+  # barcoding, sequencing.
+  stats.df2 = stats.df %>% dplyr::left_join(
+    replicates.df %>% dplyr::select(replicate, replicate_PCR, replicate_cDNA, replicate_barcode, replicate_sequencing),
+    by="replicate")
+  lmer_res = lmer(ratio_cmp ~ type + (1|replicate_cDNA), data = stats.df2)
+  drop1(update(lmer_res, REML=F), test="Chisq")
+  lmer_res = lmer(ratio_cmp ~ type + (1|replicate_cDNA) + (1|replicate_barcode), data = stats.df2)
+  drop1(update(lmer_res, REML=F), test="Chisq")
+  lmer_res = lmer(ratio_cmp ~ type + (1|replicate_cDNA) + (1|replicate_sequencing), data = stats.df2)
+  drop1(update(lmer_res, REML=F), test="Chisq")
+  lmer_res = lmer(ratio_cmp ~ type + (1|replicate_cDNA) + (1|replicate_PCR), data = stats.df2)
+  drop1(update(lmer_res, REML=F), test="Chisq")
+  lmer_res = lmer(ratio_cmp ~ type + (1|replicate_cDNA) + (1|replicate_barcode), data = stats.df2)
+  drop1(update(lmer_res, REML=F), test="Chisq")
+  lmer_res = lmer(ratio_cmp ~ type + (1|replicate_cDNA) + (1|replicate_barcode) + (1|replicate_sequencing), data = stats.df2)
+  drop1(update(lmer_res, REML=F), test="Chisq")
+  lmer_res = lmer(ratio_cmp ~ type + (1|replicate_cDNA) + (1|replicate_barcode) + (1|replicate_sequencing) + (1|replicate_PCR), data = stats.df2)
+  drop1(update(lmer_res, REML=F), test="Chisq")
+  
+  lmer_res = lmer(ratio_cmp ~ type + (1|replicate_cDNA/replicate_PCR/replicate_barcode), data = stats.df2)
+  drop1(update(lmer_res, REML=F), test="Chisq")
+
   cDNA.df = stats.df %>% dplyr::filter(type == "cDNA") %>% as.data.frame()
   gDNA.df = stats.df %>% dplyr::filter(type == "gDNA") %>% as.data.frame()
   
   cDNA_ratio = mean(cDNA.df[,colToCompare]) / mean(cDNA.df$num_wt_reads)
+  effect = mean(cDNA.df[,colToCompare] / cDNA.df$num_wt_reads) - mean(gDNA.df[,colToCompare] / gDNA.df$num_wt_reads)
   gDNA_ratio = mean(gDNA.df[,colToCompare]) / mean(gDNA.df$num_wt_reads)
+  cDNA_ratio-gDNA_ratio
   sd_cDNA_ratio = vecRatioUncertaintySD(cDNA.df[,colToCompare], cDNA.df$num_wt_reads)
   sd_gDNA_ratio = vecRatioUncertaintySD(gDNA.df[,colToCompare], gDNA.df$num_wt_reads)
   SE_cDNA_ratio = sd_cDNA_ratio / sqrt(nrow(cDNA.df))
   SE_gDNA_ratio = sd_gDNA_ratio / sqrt(nrow(gDNA.df))
   
   effect = cDNA_ratio / gDNA_ratio
+  effect = abs(cDNA_ratio - gDNA_ratio)
   effect_se = ratioUncertaintySD(cDNA_ratio, SE_cDNA_ratio, gDNA_ratio, SE_gDNA_ratio, 0)
+  effect_se = sqrt(SE_cDNA_ratio^2 + SE_gDNA_ratio^2)
   
-  Zscore = (effect - 1) / effect_se
+  SE_cDNA_ratio = sd(cDNA.df[,colToCompare] / cDNA.df$num_wt_reads) / sqrt(nrow(cDNA.df))
+  SE_gDNA_ratio = sd(gDNA.df[,colToCompare] / gDNA.df$num_wt_reads) / sqrt(nrow(gDNA.df))
+  
+  
+  df = round((sd_cDNA_ratio^2/nrow(cDNA.df) + sd_gDNA_ratio^2/nrow(gDNA.df))^2 / ( ( (sd_cDNA_ratio^2/nrow(cDNA.df))^2 / (nrow(cDNA.df) - 1) ) + ((sd_gDNA_ratio^2/nrow(gDNA.df))^2 / (nrow(gDNA.df) - 1) ) ))
+  Zscore = (effect) / effect_se
+  pchisq(Zscore^2, df=36, lower.tail=F)
+  2*pt(Zscore, df=38, lower.tail=F)
   pvalue = 2 * pnorm(-abs(Zscore))
   return(list(effect = effect, effect_sd = effect_se, pval = pvalue))
 }
