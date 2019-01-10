@@ -242,3 +242,13 @@ submitJobs.py --MEM 8000 -j batch1.del.analysis.all_dels -q yesterday \
  -c "Rscript $JS/src/experiment/paired.deletion.analysis.R --regions regions.test.tsv --replicates replicates.test.tsv --out analysis/batch1.all_dels \
      --exclude_multiple_deletions F --exclude_nonspanning_reads T --exclude_nonspanning_deletions F"
 
+
+################################################################################
+# Find het SNPs in SH3GL2 to investigate ASE (relevant for SNP 6)
+cd $JS/experiment/transcribed/batch2
+cat $JS/reference/GRCh38/Homo_sapiens.GRCh38.91.exon_start_end.simple.bed | grep ENSG00000107295 > ENSG00000107295.exons.bed
+/software/hgi/pkglocal/htslib-1.5/bin/tabix -R ENSG00000107295.exons.bed $JS/ipsneurons/GRCh38/genotypes/kolf_2.imputed_phased.20150604.GRCh38.vcf.gz > kolf_2.imputed_phased.ENSG00000107295_exons.vcf
+
+/software/hgi/pkglocal/htslib-1.5/bin/tabix $JS/ipsneurons/GRCh38/genotypes/kolf_2.imputed_phased.20150604.GRCh38.INFO.0.8.exons.vcf.gz 9:17579123-17797129 > kolf_2.imputed_phased.ENSG00000107295_exons.2.vcf
+
+
