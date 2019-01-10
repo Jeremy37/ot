@@ -13,7 +13,11 @@ mkdir $AD_FINEMAP/finemap_credset
 cp $OTCOREGEN/AD_PD_finemap/AD_credible_sets/v2/* $AD_FINEMAP/finemap_credset
 cp $OTCOREGEN/AD_PD_finemap/AD_finemap_output/v2/* $AD_FINEMAP/finemap_credset
 
-ln -s $OTCOREGEN/AD_PD_finemap/summary_stats $AD_FINEMAP/summary_stats
+mkdir $OTCOREGEN/AD_PD_finemap/summary_stats
+ln -s $OTCOREGEN/AD_PD_finemap/ADD.proxy_v2.bgen.stats.gz $AD_FINEMAP/summary_stats/ADD.proxy_v2.bgen.stats.gz
+zcat $OTCOREGEN/AD_PD_finemap/summary_stats/AD.IGAP1_GWAX_v2.meta.gz | tr ' ' '\t' | bgzip > $AD_FINEMAP/summary_stats/AD.IGAP1_GWAX_v2.meta.bgz
+tabix -s 1 -b 2 -e 2 -S 1 $AD_FINEMAP/summary_stats/AD.IGAP1_GWAX_v2.meta.bgz
+
 
 mkdir $AD_FINEMAP/reference
 ln -s $OTCOREGEN/jeremys/reference/dbSNP $AD_FINEMAP/reference/dbSNP
