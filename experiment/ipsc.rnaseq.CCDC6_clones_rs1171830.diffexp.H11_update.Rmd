@@ -1,0 +1,421 @@
+# RNA-seq of iPSC and microglia edited for CCDC6 rs1171830
+
+This addendum to the main analysis looks at how the results change when clone HOM_HDR clone H11 is removed from the iPSC data.
+
+```{r Setup, message=FALSE, warning=FALSE, echo=FALSE}
+library(pheatmap)
+library(DESeq2)
+library(pcaMethods)
+library(tidyverse)
+library(RColorBrewer)
+library(annotables)
+library(gProfileR)
+
+knitr::opts_chunk$set(fig.width=9, fig.height=6) 
+
+root = "/Users/jeremys/work/opentargets/experiment/RNA/CCDC6_clones_rs1171830"
+outputPath = file.path(root, "analysis")
+#setwd(root)
+
+counts.fname = file.path(root, "CCDC6_clones_rs1171830.counts.tsv.gz")
+meta.fname = file.path(root, "CCDC6_clones_rs1171830.meta.tsv")
+saveFiles = T
+```
+
+```{r LoadCounts, warning=FALSE, message=FALSE, echo=FALSE}
+readtsv = function(fname, ...) { readr::read_tsv(fname, ...) %>% as.data.frame() }
+
+readCounts = function(fname) {
+  counts = readtsv(fname)
+  # Fix gene names to remove the version number (e.g. ".4" in ENSG00000223972.4)
+  gene_ids <- gsub("\\.[\\d]+", "", counts[,1], perl=T)
+  counts[,1] = gene_ids
+  rownames(counts) = gene_ids
+  counts
+}
+
+counts.df = readCounts(counts.fname)
+rawcounts.mat = counts.df %>% select(-gene_id, -length) %>% as.matrix()
+rownames(rawcounts.mat) = counts.df$gene_id
+
+gene.meta = counts.df[,c(1,2)]
+
+meta.df = read_tsv(meta.fname)
+# Ensure the metadata rows are in the same order as the counts columns
+meta.df = meta.df[match(colnames(rawcounts.mat), meta.df$sample_name),]
+
+dds = DESeqDataSetFromMatrix(countData = rawcounts.mat,
+                             colData = meta.df,
+                             design = ~ 1)
+
+dds <- estimateSizeFactors(dds)
+
+# Extract the normalized counts
+normalized_counts <- counts(dds, normalized = T)
+
+getRPKMSummary = function(counts) {
+  rpm = apply(counts, MARGIN=2, FUN=function(x) x / sum(x)) * 1e6
+  rpkm.mat = apply(rpm * 1e3, MARGIN=2, FUN=function(x) x / gene.meta$length)
+  rpkm.df = cbind(data.frame(gene_id = rownames(rpkm.mat)), rpkm.mat)
+  data.frame(gene_id = rownames(rpkm.mat),
+             median.rpkm = rowMedians(rpkm.mat),
+             mean.rpkm = rowMeans(rpkm.mat),
+             sd.rpkm = rowSds(rpkm.mat))
+}
+rpkm.avgs.df = getRPKMSummary(normalized_counts)
+
+# Transform with variance stabilizing transformation, and get the updated matrix
+vsd <- vst(dds, blind=T)
+```
+
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+meta.df = as.data.frame(meta.df)
+rownames(meta.df) = meta.df$sample_name
+
+meta.ipsc.df = meta.df %>% filter(cell_type == "ipsc")
+rownames(meta.ipsc.df) = meta.ipsc.df$sample_name
+dds.ipsc = DESeqDataSetFromMatrix(countData = rawcounts.mat[, meta.ipsc.df$sample_name],
+                                  colData = meta.ipsc.df,
+                                  design = ~ condition)
+
+dds.ipsc <- estimateSizeFactors(dds.ipsc)
+
+# Extract the normalized counts
+normalized_counts.ipsc <- counts(dds.ipsc, normalized = T)
+normalized_counts.ipsc2 = normalized_counts.ipsc %>% as.data.frame() %>% rownames_to_column(var="gene_id")
+```
+
+```{r PlotDE, warning=FALSE, message=FALSE, echo=FALSE}
+plotDE = function(deseq.res.df, title, sigThreshold=0.01, xlim=NULL, ylim=NULL, maxLabels=100, labelSize=2.2) {
+  p = ggplot(deseq.res.df %>% mutate(sig=(padj < sigThreshold)), aes(x=baseMean, y=log2FoldChange, col=sig)) +
+    geom_point(size=0.5) +
+    scale_color_manual(values=c("black", "red", "dodgerblue")) +
+    theme_bw(14) +
+    scale_x_log10() + xlab("DESeq2 baseMean expression") +
+    theme(legend.position="none") +
+    ggtitle(title)
+  
+  # Determine the points to label by fitting a spline to the points and
+  # adjusting it until we get the desired number of points beyond the line
+  deseq.res.sig = deseq.res.df %>% filter(padj < sigThreshold) %>%
+    arrange(baseMean)
+  deseq.res.sig.neg = deseq.res.sig %>% filter(log2FoldChange < 0)
+  deseq.res.sig.pos = deseq.res.sig %>% filter(log2FoldChange > 0)
+  fit.neg <- smooth.spline(log10(deseq.res.sig.neg$baseMean), deseq.res.sig.neg$log2FoldChange, df=7)
+  fit.pos <- smooth.spline(log10(deseq.res.sig.pos$baseMean), deseq.res.sig.pos$log2FoldChange, df=7)
+  
+  if (nrow(deseq.res.sig) <= maxLabels) {
+    deseq.res.sig.plot = deseq.res.sig
+  } else {
+    # Fit splines to the significant genes, and adjust these to get the
+    # desired number of points labelled
+    factor = 0.9
+    offset = -0.2
+    numlabels = sum(deseq.res.sig.pos$log2FoldChange > (predict(fit.pos, log10(deseq.res.sig.pos$baseMean))$y * factor + offset)) +
+      sum(deseq.res.sig.neg$log2FoldChange < (predict(fit.neg, log10(deseq.res.sig.neg$baseMean))$y * factor - offset))
+    while (numlabels > maxLabels) {
+      offset = offset + 0.1
+      factor = factor * 1.04
+      numlabels = sum(deseq.res.sig.pos$log2FoldChange > (predict(fit.pos, log10(deseq.res.sig.pos$baseMean))$y * factor + offset)) +
+        sum(deseq.res.sig.neg$log2FoldChange < (predict(fit.neg, log10(deseq.res.sig.neg$baseMean))$y * factor - offset))
+    }
+    deseq.res.sig.plot = rbind(deseq.res.sig.pos[deseq.res.sig.pos$log2FoldChange > (predict(fit.pos, log10(deseq.res.sig.pos$baseMean))$y * factor + offset),],
+                               deseq.res.sig.neg[deseq.res.sig.neg$log2FoldChange < (predict(fit.neg, log10(deseq.res.sig.neg$baseMean))$y * factor - offset),])
+  }
+  p = p + annotate(geom="text", x=deseq.res.sig.plot$baseMean, y=deseq.res.sig.plot$log2FoldChange,
+                   label=deseq.res.sig.plot$gene_name, col="blue", hjust = -0.2, size=labelSize) 
+  #p = p + geom_line(aes(10^x, y*factor - offset), data=as.data.frame(fit.neg[c("x","y")]), col="grey90") +
+  #  geom_line(aes(10^x, y*factor + offset), data=as.data.frame(fit.pos[c("x","y")]), col="grey90")
+  if (!is.null(xlim) | !is.null(ylim)) {
+    p = p + coord_cartesian(xlim=xlim, ylim=ylim)
+  }
+  return(p)
+}
+```
+
+## iPSC differential expression: HDR HOM vs WT
+
+Get DE genes between HDR_HOM (all samples) and WT.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+dds.ipsc <- DESeq(dds.ipsc)
+plotDispEsts(dds.ipsc, main="iPSC diffexp dispersion estimates")
+
+ipsc.hom_hdr.res <- results(dds.ipsc, contrast = c("condition", "HDR_HOM", "WT"), alpha = 0.05)
+ipsc.hom_hdr.res <- lfcShrink(dds.ipsc, contrast =  c("condition", "HDR_HOM", "WT"), res = ipsc.hom_hdr.res)
+
+# Add annotations to all genes
+grch38_dedup = grch38 %>% select(-entrez) %>% filter(!duplicated(ensgene))
+ipsc.hom_hdr.res.df = data.frame(ipsc.hom_hdr.res) %>%
+  rownames_to_column(var = "gene_id") %>%
+  arrange(padj) %>% filter(!duplicated(gene_id)) %>%
+  left_join(grch38_dedup %>% select(ensgene, symbol, biotype, description), by=c("gene_id" = "ensgene"))
+
+#plotMA(ipsc.hom_hdr.res, ylim=c(-1, 1), main="iPSC diffexp HDR Hom:WT MA plot")
+plotDE(ipsc.hom_hdr.res.df %>% mutate(gene_name = symbol), "iPSC diffexp HDR Hom:WT MA plot", sigThreshold = .01, xlim=c(10, 5e5), ylim=c(-1.3, 1.3))
+
+ggplot(ipsc.hom_hdr.res.df) + 
+  geom_point(aes(x = log2FoldChange, y = -log10(padj), color = padj < 0.05)) + 
+  xlab("log2 fold change") + 
+  ylab("-log10 adjusted p-value") + 
+  theme_bw() +
+  theme(legend.position = "none", 
+        plot.title = element_text(size = rel(1.5), hjust = 0.5), 
+        axis.title = element_text(size = rel(1.25))) +
+  ylim(c(0, 10)) +
+  ggtitle("iPSC diffexp HDR Hom:WT volcano plot: (y axis cut off)")
+
+summary(ipsc.hom_hdr.res)
+```
+
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+ipsc.het_hdr.res <- results(dds.ipsc, contrast = c("condition", "HDR_HET", "WT"), alpha = 0.05)
+ipsc.het_hdr.res <- lfcShrink(dds.ipsc, contrast =  c("condition", "HDR_HET", "WT"), res = ipsc.het_hdr.res)
+
+# Add annotations to all genes
+ipsc.het_hdr.res.df = data.frame(ipsc.het_hdr.res) %>%
+  rownames_to_column(var = "gene_id") %>%
+  arrange(padj) %>% filter(!duplicated(gene_id)) %>%
+  left_join(grch38_dedup %>% select(ensgene, symbol, biotype, description), by=c("gene_id" = "ensgene"))
+
+# Subset normalized counts to significant genes
+ipsc.het_hdr.res.sig.df = ipsc.het_hdr.res.df %>% filter(padj < 0.05)
+HetHDR_samples = meta.ipsc.df %>% filter(condition %in% c("WT", "HDR_HET")) %>% .$sample_name
+```
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+ipsc.hdr.df = ipsc.hom_hdr.res.df %>%
+  full_join(ipsc.het_hdr.res.df %>% select(-symbol, -biotype, -description), by="gene_id")
+
+ipsc.hdr.sig.df = ipsc.hdr.df %>%
+  filter(padj.x < 0.05 | padj.y < 0.05) %>%
+  na.omit() %>%
+  mutate(sig = ifelse(padj.x < 0.05, ifelse(padj.y < 0.05, "both", "HomHDR"), ifelse(padj.y < 0.05, "HetHDR", "Error")))
+
+ipsc.hdr.sig_both.df = ipsc.hdr.sig.df %>% filter(padj.x < 0.01, padj.y < 0.01)
+```
+
+
+## What's different about clone H11?
+
+Let's do some DE analysis of just iPSC clone H11 vs. iPSC clones D5, D8.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+# Try to find out what differs between iPSC clone H11 and the other two HDR clones.
+meta.ipsc.H11.df = meta.df %>% filter(cell_type == "ipsc", condition == "HDR_HOM")
+rownames(meta.ipsc.H11.df) = meta.ipsc.H11.df$sample_name
+meta.ipsc.H11.df$clone2 = "D5_8"
+meta.ipsc.H11.df$clone2[meta.ipsc.H11.df$clone == "H11"] = "H11"
+
+dds.ipsc.H11 = DESeqDataSetFromMatrix(countData = rawcounts.mat[, meta.ipsc.H11.df$sample_name],
+                                      colData = meta.ipsc.H11.df,
+                                      design = ~ clone2)
+
+dds.ipsc.H11 <- estimateSizeFactors(dds.ipsc.H11)
+
+dds.ipsc.H11 <- DESeq(dds.ipsc.H11)
+plotDispEsts(dds.ipsc.H11, main="iPSC clone H11 vs clones D5/8 diffexp dispersion estimates")
+
+ipsc.H11.res <- results(dds.ipsc.H11, contrast = c("clone2", "H11", "D5_8"), alpha = 0.05)
+ipsc.H11.res <- lfcShrink(dds.ipsc.H11, contrast =  c("clone2", "H11", "D5_8"), res = ipsc.H11.res)
+
+# Add annotations to all genes
+grch38_dedup = grch38 %>% select(-entrez) %>% filter(!duplicated(ensgene))
+ipsc.H11.res.df = data.frame(ipsc.H11.res) %>%
+  rownames_to_column(var = "gene_id") %>%
+  arrange(padj) %>% filter(!duplicated(gene_id)) %>%
+  left_join(grch38_dedup %>% select(ensgene, symbol, biotype, description), by=c("gene_id" = "ensgene"))
+
+#plotMA(ipsc.H11.res, ylim=c(-1, 1), main="iPSC diffexp clone H11 vs D5/8 MA plot")
+plotDE(ipsc.H11.res.df %>% mutate(gene_name = symbol), "iPSC diffexp clone H11 vs D5/8 MA plot", sigThreshold = .01, xlim=c(10, 1e5), ylim=c(-4.7, 5.8))
+
+ggplot(ipsc.H11.res.df) + 
+  geom_point(aes(x = log2FoldChange, y = -log10(padj), color = padj < 0.05)) + 
+  xlab("log2 fold change") + 
+  ylab("-log10 adjusted p-value") + 
+  theme_bw() +
+  theme(legend.position = "none", 
+        plot.title = element_text(size = rel(1.5), hjust = 0.5), 
+        axis.title = element_text(size = rel(1.25))) +
+  xlim(c(-5, 7)) + ylim(c(0, 122)) +
+  ggtitle("iPSC diffexp clone H11 vs D5/8 volcano plot: (y axis cut off)")
+
+summary(ipsc.H11.res)
+
+if (saveFiles) {
+  ipsc.H11.res.df %>% write.table(file=file.path(outputPath, "iPSC_H11_vs_D5_8_DE_genes.tsv"), sep="\t", quote=F, row.names=F, col.names=T)
+  ipsc.H11.res.df %>% filter(padj < 0.05) %>% write.table(file=file.path(outputPath, "iPSC_H11_vs_D5_8_genes.sig.tsv"), sep="\t", quote=F, row.names=F, col.names=T)
+}
+```
+
+
+Do some pathway enrichment on these DE results...
+
+Enriched terms for both upregulated and downregulated genes seem to relate to development / differentiation, so perhaps this clone had already started differentiating somehow (towards neuronal lineage?). The full results are saved in output text files.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+# Enrichments
+ipsc.H11.res.df = ipsc.H11.res.df %>% left_join(getRPKMSummary(normalized_counts[, meta.ipsc.H11.df$sample_name]), by="gene_id")
+
+ipsc.H11.pathwayEnrich = ipsc.H11.res.df %>%
+  filter(padj < 0.05, mean.rpkm > 0.5) %>%
+  dplyr::select(gene_id, log2FoldChange) %>%
+  arrange(-log2FoldChange)
+
+ipsc.H11.expressed = ipsc.H11.res.df %>% arrange(-mean.rpkm) %>% filter(mean.rpkm > 0.5) %>% dplyr::select(gene_id)
+
+if (saveFiles) {
+  write.table(ipsc.H11.pathwayEnrich, file.path(outputPath, "deseq.ipsc.H11_vs_D5_8.forPathwayEnrichment.tsv"), col.names=F, row.names=F, quote=F, sep="\t")
+  write.table(ipsc.H11.expressed, file.path(outputPath, "deseq.ipsc.H11_vs_D5_8.expressedGenes.tsv"), col.names=F, row.names=F, quote=F, sep="\t")
+
+  # Use gProfileR to get enrichments
+  gp.up = gprofiler(query = (ipsc.H11.res.df %>% filter(padj < 0.05) %>% arrange(padj) %>% filter(log2FoldChange > 0) %>% filter(between(row_number(), 1, 1000)) %>% .$gene_id),
+                    custom_bg = (ipsc.H11.expressed %>% .$gene_id), organism = "hsapiens")
+  gp.down = gprofiler(query = (ipsc.H11.res.df %>% filter(padj < 0.05) %>% arrange(padj) %>% filter(log2FoldChange < 0) %>% filter(between(row_number(), 1, 1000)) %>% .$gene_id),
+                      custom_bg = (ipsc.H11.expressed %>% .$gene_id), organism = "hsapiens")
+  write.table(gp.up %>% filter(domain != "tf") %>% arrange(domain, p.value), file.path(outputPath, "deseq.ipsc.H11_vs_D5_8.upregulated_genes.gprofiler_enrich.tsv"), col.names=T, row.names=F, quote=F, sep="\t")
+  write.table(gp.down %>% filter(domain != "tf") %>% arrange(domain, p.value), file.path(outputPath, "deseq.ipsc.H11_vs_D5_8.downregulated_genes.gprofiler_enrich.tsv"), col.names=T, row.names=F, quote=F, sep="\t")
+}
+```
+
+## DE analysis of HOM_HDR:WT excluding clone H11
+
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+meta.ipsc.exclH11.df = meta.df %>% filter(cell_type == "ipsc", clone != "H11")
+rownames(meta.ipsc.exclH11.df) = meta.ipsc.exclH11.df$sample_name
+dds.ipsc.exclH11 = DESeqDataSetFromMatrix(countData = rawcounts.mat[, meta.ipsc.exclH11.df$sample_name],
+                                  colData = meta.ipsc.exclH11.df,
+                                  design = ~ condition)
+
+dds.ipsc.exclH11 <- DESeq(dds.ipsc.exclH11)
+plotDispEsts(dds.ipsc.exclH11, main="iPSC diffexp dispersion estimates")
+
+ipsc.hom_hdr.exclH11.res <- results(dds.ipsc.exclH11, contrast = c("condition", "HDR_HOM", "WT"), alpha = 0.05)
+ipsc.hom_hdr.exclH11.res <- lfcShrink(dds.ipsc.exclH11, contrast =  c("condition", "HDR_HOM", "WT"), res = ipsc.hom_hdr.exclH11.res)
+
+# Add annotations to all genes
+ipsc.hom_hdr.exclH11.res.df = data.frame(ipsc.hom_hdr.exclH11.res) %>%
+  rownames_to_column(var = "gene_id") %>%
+  arrange(padj) %>% filter(!duplicated(gene_id)) %>%
+  left_join(grch38_dedup %>% select(ensgene, symbol, biotype, description), by=c("gene_id" = "ensgene"))
+
+#plotMA(ipsc.hom_hdr.res, ylim=c(-1, 1), main="iPSC diffexp HDR Hom:WT MA plot")
+plotDE(ipsc.hom_hdr.exclH11.res.df %>% mutate(gene_name = symbol), "iPSC diffexp HDR Hom excl H11:WT MA plot", sigThreshold = .01, xlim=c(10, 5e5), ylim=c(-1.3, 1.3))
+
+ggplot(ipsc.hom_hdr.exclH11.res.df) + 
+  geom_point(aes(x = log2FoldChange, y = -log10(padj), color = padj < 0.05)) + 
+  xlab("log2 fold change") + 
+  ylab("-log10 adjusted p-value") + 
+  theme_bw() +
+  theme(legend.position = "none", 
+        plot.title = element_text(size = rel(1.5), hjust = 0.5), 
+        axis.title = element_text(size = rel(1.25))) +
+  ylim(c(0, 10)) +
+  ggtitle("iPSC diffexp HDR Hom:WT volcano plot: (y axis cut off)")
+
+summary(ipsc.hom_hdr.exclH11.res)
+
+if (saveFiles) {
+  ipsc.hom_hdr.exclH11.res.df %>% write.table(file=file.path(outputPath, "iPSC_Hom_HDR_DE_genes.excl_H11.tsv"), sep="\t", quote=F, row.names=F, col.names=T)
+  ipsc.hom_hdr.exclH11.res.df %>% filter(padj < 0.05) %>% write.table(file=file.path(outputPath, "iPSC_Hom_HDR_DE_genes.excl_H11.sig.tsv"), sep="\t", quote=F, row.names=F, col.names=T)
+}
+```
+
+Again there are a bit over 1000 DE genes, this time with a few more called as downregulated compared with upregulated. Pathway enrichments don't look terribly informative (not shown).
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+ipsc.hom_hdr.exclH11.res.df = ipsc.hom_hdr.exclH11.res.df %>% left_join(getRPKMSummary(normalized_counts[, meta.ipsc.exclH11.df$sample_name]), by="gene_id")
+
+ipsc.hom_hdr.exclH11.pathwayEnrich = ipsc.hom_hdr.exclH11.res.df %>%
+  filter(padj < 0.05, mean.rpkm > 0.5) %>%
+  dplyr::select(gene_id, log2FoldChange) %>%
+  arrange(-log2FoldChange)
+
+ipsc.hom_hdr.exclH11.expressed = ipsc.hom_hdr.exclH11.res.df %>% arrange(-mean.rpkm) %>% filter(mean.rpkm > 0.5) %>% dplyr::select(gene_id)
+
+if (saveFiles) {
+  write.table(ipsc.hom_hdr.exclH11.pathwayEnrich, file.path(outputPath, "deseq.ipsc.HomHDR.exclH11.vs.WT.forPathwayEnrichment.tsv"), col.names=F, row.names=F, quote=F, sep="\t")
+  write.table(ipsc.hom_hdr.exclH11.expressed, file.path(outputPath, "deseq.ipsc.HomHDR.exclH11.vs.WT.expressedGenes.tsv"), col.names=F, row.names=F, quote=F, sep="\t")
+  
+  # Use gProfileR to get enrichments
+  gp.up = gprofiler(query = (ipsc.hom_hdr.exclH11.res.df %>% filter(padj < 0.05) %>% arrange(padj) %>% filter(log2FoldChange > 0) %>% filter(between(row_number(), 1, 1000)) %>% .$gene_id),
+                    custom_bg = (ipsc.hom_hdr.exclH11.expressed %>% .$gene_id), organism = "hsapiens")
+  gp.down = gprofiler(query = (ipsc.hom_hdr.exclH11.res.df %>% filter(padj < 0.05) %>% arrange(padj) %>% filter(log2FoldChange < 0) %>% filter(between(row_number(), 1, 1000)) %>% .$gene_id),
+                      custom_bg = (ipsc.hom_hdr.exclH11.expressed %>% .$gene_id), organism = "hsapiens")
+  write.table(gp.up %>% filter(domain != "tf") %>% arrange(domain, p.value), file.path(outputPath, "deseq.ipsc.HomHDR.exclH11.vs.WT.upregulated_genes.gprofiler_enrich.tsv"), col.names=T, row.names=F, quote=F, sep="\t")
+  write.table(gp.down %>% filter(domain != "tf") %>% arrange(domain, p.value), file.path(outputPath, "deseq.ipsc.HomHDR.exclH11.vs.WT.downregulated_genes.gprofiler_enrich.tsv"), col.names=T, row.names=F, quote=F, sep="\t")
+}
+```
+
+## Compare the DE analysis of HOM_HDR:WT with the same analysis excluding H11
+
+Let's compare the p values and log2FoldChanges for the HDR_HOM:WT comparison either including or excluding clone H11.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+ipsc.hom_hdr.df2 = ipsc.hom_hdr.res.df %>%
+  full_join(ipsc.hom_hdr.exclH11.res.df %>% select(-symbol, -biotype, -description), by="gene_id")
+
+ipsc.hom_hdr.sig.df2 = ipsc.hom_hdr.df2 %>%
+  filter(padj.x < 0.05 | padj.y < 0.05) %>%
+  na.omit() %>%
+  mutate(sig = ifelse(padj.x < 0.05, ifelse(padj.y < 0.05, "both", "HomHDR"), ifelse(padj.y < 0.05, "HomHDR_exclH11", "Error")))
+
+ipsc.hom_hdr.sig.df2 %>%
+  mutate(label = ifelse(padj.x < 0.001 & padj.y < 0.001, symbol, NA)) %>%
+  ggplot(aes(x=-log10(padj.x), y=-log10(padj.y), color=sig)) +
+    geom_point(alpha=0.4) + theme_bw() +
+    geom_text(aes(label=label), size=2.6, hjust=0, color="grey30") +
+    xlim(0, 10) + ylim(0, 10) +
+    xlab("-log10(p) Hom HDR") + ylab("-log10(p) Hom HDR excl H11")
+
+ipsc.hom_hdr.sig.df2 %>%
+  mutate(label = ifelse(padj.x < 0.001 & padj.y < 0.001, symbol, NA)) %>%
+  ggplot(aes(x=log2FoldChange.x, y=log2FoldChange.y, color=sig)) +
+    geom_point(alpha=0.4) + theme_bw() +
+    geom_text(aes(label=label), size=2.6, hjust=0, color="grey30") +
+    xlab("log2FC Hom HDR") + ylab("log2FC Hom HDR excl H11")
+```
+
+Let's again see what DE genes are shared between the comparisons HDR_HOM:WT and HDR_HET:WT.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+ipsc.hdr.df2 = ipsc.hom_hdr.exclH11.res.df %>%
+  full_join(ipsc.het_hdr.res.df %>% select(-symbol, -biotype, -description), by="gene_id")
+
+ipsc.hdr.sig.df2 = ipsc.hdr.df2 %>%
+  filter(padj.x < 0.05 | padj.y < 0.05) %>%
+  na.omit() %>%
+  mutate(sig = ifelse(padj.x < 0.05, ifelse(padj.y < 0.05, "both", "HomHDR"), ifelse(padj.y < 0.05, "HetHDR", "Error")))
+
+ipsc.hdr.sig.df %>%
+  mutate(label = ifelse(padj.x < 0.001 & padj.y < 0.001, symbol, NA)) %>%
+  ggplot(aes(x=-log10(padj.x), y=-log10(padj.y), color=sig)) +
+    geom_point(alpha=0.4) + theme_bw() +
+    geom_text(aes(label=label), size=2.6, hjust=0, color="grey30") +
+    xlim(0, 10) + ylim(0, 10) +
+    xlab("-log10(p) Hom HDR") + ylab("-log10(p) Het HDR")
+ipsc.hdr.sig.df2 %>%
+  mutate(label = ifelse(padj.x < 0.001 & padj.y < 0.001, symbol, NA)) %>%
+  ggplot(aes(x=-log10(padj.x), y=-log10(padj.y), color=sig)) +
+    geom_point(alpha=0.4) + theme_bw() +
+    geom_text(aes(label=label), size=2.6, hjust=0, color="grey30") +
+    xlim(0, 10) + ylim(0, 10) +
+    xlab("-log10(p) Hom HDR excl H11") + ylab("-log10(p) Het HDR")
+
+ipsc.hdr.sig_both.df2 = ipsc.hdr.sig.df2 %>% filter(padj.x < 0.01, padj.y < 0.01)
+if (saveFiles) {
+  ipsc.hdr.sig_both.df2 %>%
+    select(gene_id, symbol, padj.HomHDR=padj.x, padj.HetHDR=padj.y, log2FC.HomHDR=log2FoldChange.x, log2FC.HetHDR=log2FoldChange.y, description) %>%
+    write.table(file=file.path(outputPath, "HomHDR_excl_H11_HetHDR_DE_gene_overlap.tsv"), sep="\t", quote=F, row.names=F, col.names=T)
+}
+
+nOverlapBoth = sum(ipsc.hdr.sig_both.df2$gene_id %in% ipsc.hdr.sig_both.df$gene_id)
+nPrev = nrow(ipsc.hdr.sig_both.df)
+nCur = nrow(ipsc.hdr.sig_both.df2)
+
+print(sprintf("There are %d DE genes overlapping between the comparisons HDR_HOM exclH11:WT and HDR_HET:WT. There previously were %d genes in the overlap HDR_HOM:WT and HDR_HET:WT. %d of the genes in the new comparison were overlapping in the old comparison.", nCur, nPrev, nOverlapBoth))
+
+```
