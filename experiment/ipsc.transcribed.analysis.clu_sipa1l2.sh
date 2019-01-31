@@ -108,3 +108,17 @@ tabix $KAUR_ATAC/IFNg_SL1344_500kb_pvalues.sorted.txt.gz 8:27595000-27615000 | g
 F=/warehouse/compgen_wh05/js29/sensoryneurons/atac/rasqual/output/rasqual.1k.all.with_header.gz
 (gzhead 1 $F; zcat $F | grep -P "rs4236673\t|rs11787077\t|rs7982\t|rs1532276\t|rs2070926\t|rs1532277\t|rs2279590\t|rs11136000\t|rs9331896\t|rs1532278\t") > sensoryneurons.clu.txt
 
+# Get genotypes for macrophage samples
+(zcat $JS/macrophage/genotypes/imputed.86_samples.sorted.filtered.named.vcf.gz | head -n 200 | grep "^#CHROM";
+ zcat $JS/macrophage/genotypes/imputed.86_samples.sorted.filtered.named.vcf.gz \
+   | grep -P "rs1532276\t|rs1532277\t|rs1532278\t") > macrophage.86_samples.CLU_12_14_18.vcf
+
+# Get genotypes for sensory neuron samples
+(zcat /warehouse/compgen_wh05/js29/sensoryneurons/genotypes/GRCh38/imputed_20151005/imputed.98_samples.snps_indels.INFO_08.vcf.gz | head -n 200 | grep "^#CHROM";
+ zcat /warehouse/compgen_wh05/js29/sensoryneurons/genotypes/GRCh38/imputed_20151005/imputed.98_samples.snps_indels.INFO_08.vcf.gz \
+   | grep -P "rs1532276\t|rs1532277\t|rs1532278\t") > sensory_neuron.98_samples.CLU_12_14_18.vcf
+
+WH=/warehouse/compgen_wh05/js29/sensoryneurons/datasubmission/biostudies
+(gzhead 1 $WH/atac_qtl.rasqual.1k.txt.gz; zcat $WH/atac_qtl.rasqual.1k.txt.gz | grep -P "rs1532276\t") \
+ > sensory_neuron.atac_qtl.rs1532278.txt
+
