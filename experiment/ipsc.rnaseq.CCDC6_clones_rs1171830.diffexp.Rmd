@@ -1,0 +1,618 @@
+# RNA-seq of iPSC and microglia edited for CCDC6 rs1171830
+
+## Introduction
+The goal of this experiment is to understand transcriptional differences caused by either allelic replacement of synonymous SNP rs1171830 in CCDC6, or knockout of the gene, in both iPSCs and iPSC-derived microglia.
+
+There are 18 RNA-seq samples. In iPSCs, 12 samples correspond to WT (3 samples), homozygous HDR for rs1171830 (replacing alt allele A with ref allele C), het HDR, or predicted biallelic KO.
+The CCDC6 KO hom lines are as follows:
+B11 homozygous 9bp deletion over splice site GGCACTC---------ACGC (most likely this actually only removed 3 amino acids)
+G5 homozygous 5 bp deletion GGCACTCACGAT-----CGC (this appears to alter splicing, removing 30 amino acids)
+H5 het 4bp deletion, 2 bp deletion, GGCACTCACGATG----CGC and GGCACTCACGATGGTAA——C 
+
+One of the WT line is Kolf2, and the other two WT lines (WT1 and WT2) are lines which have been edited for other SNP projects but are WT. It might be important to note (and to check there are no changes which have been missed in the Miseq regentoyping) that WT1 was editing SNCA and that WT2 was editing LRRK2.  (Sarah had to use these lines as she did not get any WT lines from CCDC6 editing as the CRISPR was too good!).
+
+There are also 6 samples differentiated to microglia; 3 of these are the homozygous HDR iPSC clones. The other 3 are WT from Kolf2 (WT_Kolf2) which Erica has made into microglia with three independent differentiations. 
+
+```{r Setup, message=FALSE, warning=FALSE, echo=FALSE}
+library(pheatmap)
+library(DESeq2)
+library(pcaMethods)
+library(tidyverse)
+library(RColorBrewer)
+library(annotables)
+library(gProfileR)
+
+knitr::opts_chunk$set(fig.width=9, fig.height=6) 
+
+root = "/Users/jeremys/work/opentargets/experiment/RNA/CCDC6_clones_rs1171830"
+outputPath = file.path(root, "analysis")
+#setwd(root)
+
+counts.fname = file.path(root, "CCDC6_clones_rs1171830.counts.tsv.gz")
+meta.fname = file.path(root, "CCDC6_clones_rs1171830.meta.tsv")
+saveFiles = T
+```
+
+```{r LoadCounts, warning=FALSE, message=FALSE, echo=FALSE}
+readtsv = function(fname, ...) { readr::read_tsv(fname, ...) %>% as.data.frame() }
+
+readCounts = function(fname) {
+  counts = readtsv(fname)
+  # Fix gene names to remove the version number (e.g. ".4" in ENSG00000223972.4)
+  gene_ids <- gsub("\\.[\\d]+", "", counts[,1], perl=T)
+  counts[,1] = gene_ids
+  rownames(counts) = gene_ids
+  counts
+}
+
+counts.df = readCounts(counts.fname)
+rawcounts.mat = counts.df %>% select(-gene_id, -length) %>% as.matrix()
+rownames(rawcounts.mat) = counts.df$gene_id
+
+gene.meta = counts.df[,c(1,2)]
+
+meta.df = read_tsv(meta.fname)
+# Ensure the metadata rows are in the same order as the counts columns
+meta.df = meta.df[match(colnames(rawcounts.mat), meta.df$sample_name),]
+
+dds = DESeqDataSetFromMatrix(countData = rawcounts.mat,
+                             colData = meta.df,
+                             design = ~ 1)
+
+dds <- estimateSizeFactors(dds)
+
+# Extract the normalized counts
+normalized_counts <- counts(dds, normalized = T)
+
+getRPKMSummary = function(counts) {
+  rpm = apply(counts, MARGIN=2, FUN=function(x) x / sum(x)) * 1e6
+  rpkm.mat = apply(rpm * 1e3, MARGIN=2, FUN=function(x) x / gene.meta$length)
+  rpkm.df = cbind(data.frame(gene_id = rownames(rpkm.mat)), rpkm.mat)
+  data.frame(gene_id = rownames(rpkm.mat),
+             median.rpkm = rowMedians(rpkm.mat),
+             mean.rpkm = rowMeans(rpkm.mat),
+             sd.rpkm = rowSds(rpkm.mat))
+}
+rpkm.avgs.df = getRPKMSummary(normalized_counts)
+
+# Transform with variance stabilizing transformation, and get the updated matrix
+vsd <- vst(dds, blind=T)
+```
+
+
+## QC
+
+Examine sample correlations / clustering.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+# Compute the correlation between samples
+vsd_cor <- cor(assay(vsd))
+
+# Plot a heatmap. Seems that the metadata for annotation needs to have rownames.
+meta.df = as.data.frame(meta.df)
+rownames(meta.df) = meta.df$sample_name
+pheatmap(vsd_cor, cluster_cols = T, cluster_rows = T, treeheight_col = 30,
+         annotation_col = meta.df %>% select(cell_type, condition),
+         show_colnames = F, fontsize = 9, main = "CCDC6 RNA-seq sample correlations")
+```
+
+As seen above, the microglia samples clearly separate from the iPSCs.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+ipsc_samplenames = meta.df %>% filter(cell_type == "ipsc") %>% .$sample_name
+pheatmap(vsd_cor[ipsc_samplenames, ipsc_samplenames],
+         cluster_cols = T, cluster_rows = T, treeheight_col = 30,
+         annotation_col = meta.df[meta.df$cell_type == "ipsc",] %>% select(cell_type, condition),
+         show_colnames = F, fontsize = 9, main = "iPSC RNA-seq sample correlations")
+
+microglia_samplenames = meta.df %>% filter(cell_type == "microglia") %>% .$sample_name
+pheatmap(vsd_cor[microglia_samplenames, microglia_samplenames],
+         cluster_cols = T, cluster_rows = T, treeheight_col = 30,
+         annotation_col = meta.df[meta.df$cell_type == "microglia",] %>% select(cell_type, condition),
+         show_colnames = F, fontsize = 9, main = "Microglia RNA-seq sample correlations")
+
+```
+
+Considering iPSCs and microglia separately, the only consistent feature is that clone H11 seems to be different from the rest. Apart from this, neither WT samples, HDR, nor KO samples consistently cluster together, either in microglia or iPSCs.
+
+Let's look at PCA plots separately within iPSCs and microglia (when looking at them together, nearly all of the variation is due to cell type).
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+meta.ipsc.df = meta.df %>% filter(cell_type == "ipsc")
+rownames(meta.ipsc.df) = meta.ipsc.df$sample_name
+dds.ipsc = DESeqDataSetFromMatrix(countData = rawcounts.mat[, meta.ipsc.df$sample_name],
+                                  colData = meta.ipsc.df,
+                                  design = ~ condition)
+
+dds.ipsc <- estimateSizeFactors(dds.ipsc)
+
+# Extract the normalized counts
+normalized_counts.ipsc <- counts(dds.ipsc, normalized = T)
+
+# Transform with variance stabilizing transformation, and get the updated matrix
+vsd.ipsc <- vst(dds.ipsc, blind=T)
+plotPCA(vsd.ipsc, intgroup="condition") + ggtitle("iPSC: PCA of normalized counts")
+```
+
+The iPSC samples don't cluster by editing group, and the outlying sample is HDR clone H11.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+meta.mg.df = meta.df %>% filter(cell_type == "microglia")
+rownames(meta.mg.df) = meta.mg.df$sample_name
+dds.mg = DESeqDataSetFromMatrix(countData = rawcounts.mat[, meta.mg.df$sample_name],
+                                  colData = meta.mg.df,
+                                  design = ~ condition)
+
+dds.mg <- estimateSizeFactors(dds.mg)
+
+# Extract the normalized counts
+normalized_counts.mg <- counts(dds.mg, normalized = T)
+rpkm.avgs.mg.df = getRPKMSummary(normalized_counts.mg)
+
+# Transform with variance stabilizing transformation, and get the updated matrix
+vsd.mg <- vst(dds.mg, blind=T)
+plotPCA(vsd.mg, intgroup=c("condition", "clone")) + ggtitle("Microglia: PCA of normalized counts")
+```
+
+The microglia samples also don't cluster by editing group, and the outlying sample is again HDR clone H11.
+
+
+## iPSC differential expression: HDR HOM vs WT
+
+Let's get differentially expressed genes in iPSC clones, first between HDR and WT.
+
+```{r PlotDE, warning=FALSE, message=FALSE, echo=FALSE}
+plotDE = function(deseq.res.df, title, sigThreshold=0.01, xlim=NULL, ylim=NULL, maxLabels=100, labelSize=2.2) {
+  p = ggplot(deseq.res.df %>% mutate(sig=(padj < sigThreshold)), aes(x=baseMean, y=log2FoldChange, col=sig)) +
+    geom_point(size=0.5) +
+    scale_color_manual(values=c("black", "red", "dodgerblue")) +
+    theme_bw(14) +
+    scale_x_log10() + xlab("DESeq2 baseMean expression") +
+    theme(legend.position="none") +
+    ggtitle(title)
+  
+  # Determine the points to label by fitting a spline to the points and
+  # adjusting it until we get the desired number of points beyond the line
+  deseq.res.sig = deseq.res.df %>% filter(padj < sigThreshold) %>%
+    arrange(baseMean)
+  deseq.res.sig.neg = deseq.res.sig %>% filter(log2FoldChange < 0)
+  deseq.res.sig.pos = deseq.res.sig %>% filter(log2FoldChange > 0)
+  fit.neg <- smooth.spline(log10(deseq.res.sig.neg$baseMean), deseq.res.sig.neg$log2FoldChange, df=7)
+  fit.pos <- smooth.spline(log10(deseq.res.sig.pos$baseMean), deseq.res.sig.pos$log2FoldChange, df=7)
+  
+  if (nrow(deseq.res.sig) <= maxLabels) {
+    deseq.res.sig.plot = deseq.res.sig
+  } else {
+    # Fit splines to the significant genes, and adjust these to get the
+    # desired number of points labelled
+    factor = 0.9
+    offset = -0.2
+    numlabels = sum(deseq.res.sig.pos$log2FoldChange > (predict(fit.pos, log10(deseq.res.sig.pos$baseMean))$y * factor + offset)) +
+      sum(deseq.res.sig.neg$log2FoldChange < (predict(fit.neg, log10(deseq.res.sig.neg$baseMean))$y * factor - offset))
+    while (numlabels > maxLabels) {
+      offset = offset + 0.1
+      factor = factor * 1.04
+      numlabels = sum(deseq.res.sig.pos$log2FoldChange > (predict(fit.pos, log10(deseq.res.sig.pos$baseMean))$y * factor + offset)) +
+        sum(deseq.res.sig.neg$log2FoldChange < (predict(fit.neg, log10(deseq.res.sig.neg$baseMean))$y * factor - offset))
+    }
+    deseq.res.sig.plot = rbind(deseq.res.sig.pos[deseq.res.sig.pos$log2FoldChange > (predict(fit.pos, log10(deseq.res.sig.pos$baseMean))$y * factor + offset),],
+                               deseq.res.sig.neg[deseq.res.sig.neg$log2FoldChange < (predict(fit.neg, log10(deseq.res.sig.neg$baseMean))$y * factor - offset),])
+  }
+  p = p + annotate(geom="text", x=deseq.res.sig.plot$baseMean, y=deseq.res.sig.plot$log2FoldChange,
+                   label=deseq.res.sig.plot$gene_name, col="blue", hjust = -0.2, size=labelSize) 
+  #p = p + geom_line(aes(10^x, y*factor - offset), data=as.data.frame(fit.neg[c("x","y")]), col="grey90") +
+  #  geom_line(aes(10^x, y*factor + offset), data=as.data.frame(fit.pos[c("x","y")]), col="grey90")
+  if (!is.null(xlim) | !is.null(ylim)) {
+    p = p + coord_cartesian(xlim=xlim, ylim=ylim)
+  }
+  return(p)
+}
+```
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+dds.ipsc <- DESeq(dds.ipsc)
+plotDispEsts(dds.ipsc, main="iPSC diffexp dispersion estimates")
+
+ipsc.hom_hdr.res <- results(dds.ipsc, contrast = c("condition", "HDR_HOM", "WT"), alpha = 0.05)
+ipsc.hom_hdr.res <- lfcShrink(dds.ipsc, contrast =  c("condition", "HDR_HOM", "WT"), res = ipsc.hom_hdr.res)
+
+# Add annotations to all genes
+grch38_dedup = grch38 %>% select(-entrez) %>% filter(!duplicated(ensgene))
+ipsc.hom_hdr.res.df = data.frame(ipsc.hom_hdr.res) %>%
+  rownames_to_column(var = "gene_id") %>%
+  arrange(padj) %>% filter(!duplicated(gene_id)) %>%
+  left_join(grch38_dedup %>% select(ensgene, symbol, biotype, description), by=c("gene_id" = "ensgene"))
+
+#plotMA(ipsc.hom_hdr.res, ylim=c(-1, 1), main="iPSC diffexp HDR Hom:WT MA plot")
+plotDE(ipsc.hom_hdr.res.df %>% mutate(gene_name = symbol), "iPSC diffexp HDR Hom:WT MA plot", sigThreshold = .01, xlim=c(10, 5e5), ylim=c(-1.3, 1.3))
+
+ggplot(ipsc.hom_hdr.res.df) + 
+  geom_point(aes(x = log2FoldChange, y = -log10(padj), color = padj < 0.05)) + 
+  xlab("log2 fold change") + 
+  ylab("-log10 adjusted p-value") + 
+  theme_bw() +
+  theme(legend.position = "none", 
+        plot.title = element_text(size = rel(1.5), hjust = 0.5), 
+        axis.title = element_text(size = rel(1.25))) +
+  ylim(c(0, 10)) +
+  ggtitle("iPSC diffexp HDR Hom:WT volcano plot: (y axis cut off)")
+
+summary(ipsc.hom_hdr.res)
+if (saveFiles) {
+  ipsc.hom_hdr.res.df %>% write.table(file=file.path(outputPath, "iPSC_Hom_HDR_DE_genes.tsv"), sep="\t", quote=F, row.names=F, col.names=T)
+}
+```
+
+Dispersion estimates look good. The MA plot and volcano plot look reasonable, and we have about 1100 DE genes, with close to half up half down.
+
+Let's look at the DE genes across edit types.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+# Subset normalized counts to significant genes
+ipsc.hom_hdr.res.sig.df = ipsc.hom_hdr.res.df %>% filter(padj < 0.05)
+sig_norm_counts <- normalized_counts[ipsc.hom_hdr.res.sig.df$gene_id, meta.ipsc.df$sample_name]
+
+# Choose heatmap color palette
+heat_colors <- brewer.pal(n = 6, name = "YlOrRd")
+
+pheatmap(sig_norm_counts,
+         color = heat_colors,
+         cluster_rows = T,
+         show_rownames = F,
+         fontsize = 9,
+         treeheight_col = 30,
+         annotation = select(meta.ipsc.df, condition),
+         scale = "row",
+         main = "iPSC diffexp genes HDR Hom:WT")
+```
+
+We can also look at the top 20 DE genes by average expression, p value, or log fold change.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+plotTopCounts = function(topcounts.mat, title) {
+  top_norm_counts.df <- gather(topcounts.mat, key = "sample_name", value = "normalized_counts", 2:ncol(topcounts.mat)) %>%
+    left_join(meta.df, by="sample_name") %>%
+    left_join(grch38 %>% select(ensgene, symbol), by="ensgene")
+  
+  ggplot(top_norm_counts.df, aes(x = symbol, y = normalized_counts, color = condition)) +
+    geom_boxplot() +
+    geom_point(alpha=0.6, position=position_jitterdodge(jitter.width = 0.1)) +
+    scale_y_log10() +
+    xlab("Gene") +
+    ylab("Normalized Count") +
+    ggtitle(title) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    theme(plot.title = element_text(hjust = 0.5))
+}
+
+HomHDR_samples = meta.ipsc.df %>% filter(condition %in% c("WT", "HDR_HOM")) %>% .$sample_name
+top_norm_counts = sig_norm_counts[ipsc.hom_hdr.res.sig.df %>% arrange(padj) %>% .$gene_id %>% .[1:20], HomHDR_samples] %>%
+  as.data.frame() %>% rownames_to_column(var = "ensgene")
+plotTopCounts(top_norm_counts, "iPSC HDR Hom vs. WT: Top 20 DE genes by p-value")
+
+top_norm_counts = sig_norm_counts[ipsc.hom_hdr.res.sig.df %>% arrange(-baseMean) %>% .$gene_id %>% .[1:20], HomHDR_samples] %>%
+  as.data.frame() %>% rownames_to_column(var = "ensgene")
+plotTopCounts(top_norm_counts, "iPSC HDR Hom vs. WT: Top 20 DE genes by expression")
+
+top_norm_counts = sig_norm_counts[ipsc.hom_hdr.res.sig.df %>% arrange(log2FoldChange) %>% .$gene_id %>% .[1:20], HomHDR_samples] %>%
+  as.data.frame() %>% rownames_to_column(var = "ensgene")
+plotTopCounts(top_norm_counts, "iPSC HDR Hom vs. WT: Top 20 DE genes by log fold change")
+
+```
+
+
+## iPSC differential expression: HDR Het vs WT
+
+Let's get differentially expressed genes in iPSC clones, first between HDR and WT.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+ipsc.het_hdr.res <- results(dds.ipsc, contrast = c("condition", "HDR_HET", "WT"), alpha = 0.05)
+ipsc.het_hdr.res <- lfcShrink(dds.ipsc, contrast =  c("condition", "HDR_HET", "WT"), res = ipsc.het_hdr.res)
+
+# Add annotations to all genes
+ipsc.het_hdr.res.df = data.frame(ipsc.het_hdr.res) %>%
+  rownames_to_column(var = "gene_id") %>%
+  arrange(padj) %>% filter(!duplicated(gene_id)) %>%
+  left_join(grch38_dedup %>% select(ensgene, symbol, biotype, description), by=c("gene_id" = "ensgene"))
+
+#plotMA(ipsc.het_hdr.res, ylim=c(-1, 1), main="iPSC diffexp HDR Het:WT MA plot")
+plotDE(ipsc.het_hdr.res.df %>% mutate(gene_name = symbol), "iPSC diffexp HDR Het:WT MA plot", sigThreshold = .01, xlim=c(10, 2e5), ylim=c(-1.3, 1.3))
+
+ggplot(ipsc.het_hdr.res.df) + 
+  geom_point(aes(x = log2FoldChange, y = -log10(padj), color = padj < 0.05)) + 
+  xlab("log2 fold change") + 
+  ylab("-log10 adjusted p-value") + 
+  theme_bw() +
+  theme(legend.position = "none", 
+        plot.title = element_text(size = rel(1.5), hjust = 0.5), 
+        axis.title = element_text(size = rel(1.25))) +
+  ylim(c(0, 10)) +
+  ggtitle("iPSC diffexp HDR Het:WT volcano plot: (y axis cut off)")
+
+summary(ipsc.het_hdr.res)
+if (saveFiles) {
+  ipsc.het_hdr.res.df %>% write.table(file=file.path(outputPath, "iPSC_Het_HDR_DE_genes.tsv"), sep="\t", quote=F, row.names=F, col.names=T)
+}
+
+# Subset normalized counts to significant genes
+ipsc.het_hdr.res.sig.df = ipsc.het_hdr.res.df %>% filter(padj < 0.05)
+sig_norm_counts <- normalized_counts[ipsc.het_hdr.res.sig.df$gene_id, meta.ipsc.df$sample_name]
+
+# Choose heatmap color palette
+heat_colors <- brewer.pal(n = 6, name = "YlOrRd")
+
+pheatmap(sig_norm_counts,
+         color = heat_colors,
+         cluster_rows = T,
+         show_rownames = F,
+         fontsize = 9,
+         treeheight_col = 30,
+         annotation = select(meta.ipsc.df, condition),
+         scale = "row",
+         main = "iPSC diffexp genes HDR Het:WT")
+
+HetHDR_samples = meta.ipsc.df %>% filter(condition %in% c("WT", "HDR_HET")) %>% .$sample_name
+```
+
+There are actually more DE genes when contrasting Het HDR clones to WT than Hom HDR to WT. Perhaps this is because of the outlier clone H11?
+
+Let's see what DE genes are shared between the two comparisons.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+ipsc.hdr.df = ipsc.hom_hdr.res.df %>%
+  full_join(ipsc.het_hdr.res.df %>% select(-symbol, -biotype, -description), by="gene_id")
+
+ipsc.hdr.sig.df = ipsc.hdr.df %>%
+  filter(padj.x < 0.05 | padj.y < 0.05) %>%
+  na.omit() %>%
+  mutate(sig = ifelse(padj.x < 0.05, ifelse(padj.y < 0.05, "both", "HomHDR"), ifelse(padj.y < 0.05, "HetHDR", "Error")))
+
+# ggplot(ipsc.hdr.sig.df, aes(x=-log10(padj.x), y=-log10(padj.y), color=sig)) +
+#   geom_point(alpha=0.4) + theme_bw() +
+#   xlim(0, 10) + ylim(0, 10) +
+#   xlab("-log10(p) Hom HDR") + ylab("-log10(p) Het HDR")
+
+ipsc.hdr.sig.df %>%
+  mutate(label = ifelse(padj.x < 0.001 & padj.y < 0.001, symbol, NA)) %>%
+  ggplot(aes(x=-log10(padj.x), y=-log10(padj.y), color=sig)) +
+    geom_point(alpha=0.4) + theme_bw() +
+    geom_text(aes(label=label), size=2.6, hjust=0, color="grey30") +
+    xlim(0, 10) + ylim(0, 10) +
+    xlab("-log10(p) Hom HDR") + ylab("-log10(p) Het HDR")
+
+ipsc.hdr.sig_both.df = ipsc.hdr.sig.df %>% filter(padj.x < 0.01, padj.y < 0.01)
+if (saveFiles) {
+  ipsc.hdr.sig_both.df %>%
+    select(gene_id, symbol, padj.HomHDR=padj.x, padj.HetHDR=padj.y, log2FC.HomHDR=log2FoldChange.x, log2FC.HetHDR=log2FoldChange.y, description) %>%
+    write.table(file=file.path(outputPath, "HomHDR_HetHDR_DE_gene_overlap.tsv"), sep="\t", quote=F, row.names=F, col.names=T)
+}
+```
+
+103 genes are differentially expressed with pAdjusted < 0.01 in both the HOM_HDR:WT and HET_HDR:WT comparisons.
+
+
+## iPSC differential expression: KO vs WT
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+ipsc.ko.res <- results(dds.ipsc, contrast = c("condition", "KO", "WT"), alpha = 0.05)
+ipsc.ko.res <- lfcShrink(dds.ipsc, contrast =  c("condition", "KO", "WT"), res = ipsc.ko.res)
+
+# Add annotations to all genes
+ipsc.ko.res.df = data.frame(ipsc.ko.res) %>%
+  rownames_to_column(var = "gene_id") %>%
+  arrange(padj) %>% filter(!duplicated(gene_id)) %>%
+  left_join(grch38_dedup %>% select(ensgene, symbol, biotype, description), by=c("gene_id" = "ensgene"))
+
+#plotMA(ipsc.ko.res, ylim=c(-1, 1), main="iPSC diffexp KO:WT MA plot")
+plotDE(ipsc.ko.res.df %>% mutate(gene_name = symbol), "iPSC diffexp KO:WT MA plot", sigThreshold = .01, xlim=c(10, 2e5), ylim=c(-1.4, 1.5))
+
+ggplot(ipsc.ko.res.df) + 
+  geom_point(aes(x = log2FoldChange, y = -log10(padj), color = padj < 0.05)) + 
+  xlab("log2 fold change") + 
+  ylab("-log10 adjusted p-value") + 
+  theme_bw() +
+  theme(legend.position = "none", 
+        plot.title = element_text(size = rel(1.5), hjust = 0.5), 
+        axis.title = element_text(size = rel(1.25))) +
+  ylim(c(0, 10)) +
+  ggtitle("iPSC diffexp KO:WT volcano plot: (y axis cut off)")
+
+summary(ipsc.ko.res)
+
+if (saveFiles) {
+  ipsc.ko.res.df %>% write.table(file=file.path(outputPath, "iPSC_KO_DE_genes.tsv"), sep="\t", quote=F, row.names=F, col.names=T)
+}
+```
+
+Here we have about 400 DE genes, half up and half down.
+
+Let's look at the DE genes across edit types.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+# Subset normalized counts to significant genes
+ipsc.ko.res.sig.df = ipsc.ko.res.df %>% filter(padj < 0.05)
+sig_norm_counts <- normalized_counts[ipsc.ko.res.sig.df$gene_id, meta.ipsc.df$sample_name]
+
+# Choose heatmap color palette
+heat_colors <- brewer.pal(n = 6, name = "YlOrRd")
+
+pheatmap(sig_norm_counts,
+         color = heat_colors,
+         cluster_rows = T,
+         show_rownames = F,
+         fontsize = 9,
+         treeheight_col = 30,
+         annotation = select(meta.ipsc.df, condition),
+         scale = "row",
+         main = "iPSC diffexp genes KO:WT")
+```
+
+Let's also look at the top 20 DE genes by average expression, p value, or log fold change.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+KO_samples = meta.ipsc.df %>% filter(condition %in% c("WT", "KO")) %>% .$sample_name
+top_norm_counts = sig_norm_counts[ipsc.ko.res.sig.df %>% arrange(padj) %>% .$gene_id %>% .[1:20], KO_samples] %>%
+  as.data.frame() %>% rownames_to_column(var = "ensgene")
+plotTopCounts(top_norm_counts, "iPSC KO vs. WT: Top 20 DE genes by p-value")
+
+top_norm_counts = sig_norm_counts[ipsc.ko.res.sig.df %>% arrange(-baseMean) %>% .$gene_id %>% .[1:20], KO_samples] %>%
+  as.data.frame() %>% rownames_to_column(var = "ensgene")
+plotTopCounts(top_norm_counts, "iPSC KO vs. WT: Top 20 DE genes by expression")
+
+top_norm_counts = sig_norm_counts[ipsc.ko.res.sig.df %>% arrange(log2FoldChange) %>% .$gene_id %>% .[1:20], KO_samples] %>%
+  as.data.frame() %>% rownames_to_column(var = "ensgene")
+plotTopCounts(top_norm_counts, "iPSC KO vs. WT: Top 20 DE genes by log fold change")
+
+```
+
+
+## Microglia differential expression
+
+Let's get differentially expressed genes between HDR, and WT clones in microglia.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+dds.mg <- DESeq(dds.mg)
+plotDispEsts(dds.mg, main="Dispersion estimates: microglia diffexp")
+
+mg.res <- results(dds.mg, contrast = c("condition", "HDR_HOM", "WT"), alpha = 0.05)
+mg.res <- lfcShrink(dds.mg, contrast =  c("condition", "HDR_HOM", "WT"), res = mg.res)
+
+mg.res.df = data.frame(mg.res) %>%
+  rownames_to_column(var = "gene_id") %>%
+  arrange(padj) %>% filter(!duplicated(gene_id)) %>%
+  left_join(grch38_dedup %>% select(ensgene, symbol, biotype, description), by=c("gene_id" = "ensgene"))
+
+#plotMA(mg.res, ylim=c(-1, 1), main="MA plot: microglia diffexp")
+plotDE(mg.res.df %>% mutate(gene_name = symbol), "MA plot: microglia diffexp", sigThreshold = .01, xlim=c(10, 2e5), ylim=c(-1.2, 1.1))
+
+ggplot(mg.res.df) + 
+  geom_point(aes(x = log2FoldChange, y = -log10(padj), color = padj < 0.05)) + 
+  xlab("log2 fold change") + 
+  ylab("-log10 adjusted p-value") + 
+  theme_bw() +
+  theme(legend.position = "none", 
+        plot.title = element_text(size = rel(1.5), hjust = 0.5), 
+        axis.title = element_text(size = rel(1.25))) +
+  ylim(c(0, 10)) + xlim(c(-1.3, 1.3)) +
+  ggtitle("Volcano plot: microglia diffexp (y axis cut off)")
+
+summary(mg.res)
+
+if (saveFiles) {
+  mg.res.df %>% write.table(file=file.path(outputPath, "Microglia_Hom_HDR_DE_genes.tsv"), sep="\t", quote=F, row.names=F, col.names=T)
+}
+```
+
+Dispersion estimates look good. But we have only 85 DE genes in total (at 5% FDR).
+
+Let's look at the DE genes across edit types.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+# Subset normalized counts to significant genes
+mg.res.sig.df = mg.res.df %>% filter(padj < 0.05)
+sig_norm_counts <- normalized_counts[mg.res.sig.df$gene_id, meta.mg.df$sample_name]
+
+# Choose heatmap color palette
+heat_colors <- brewer.pal(n = 6, name = "YlOrRd")
+
+pheatmap(sig_norm_counts,
+         color = heat_colors,
+         cluster_rows = T,
+         show_rownames = F,
+         fontsize = 9,
+         annotation = select(meta.mg.df, condition),
+         scale = "row")
+```
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+mg_samples = meta.mg.df %>% filter(condition %in% c("WT", "HDR_HOM")) %>% .$sample_name
+top_norm_counts = sig_norm_counts[mg.res.sig.df %>% arrange(padj) %>% .$gene_id %>% .[1:20], mg_samples] %>%
+  as.data.frame() %>% rownames_to_column(var = "ensgene")
+plotTopCounts(top_norm_counts, "Microglia Hom HDR vs. WT: Top 20 DE genes by p-value")
+
+top_norm_counts = sig_norm_counts[mg.res.sig.df %>% arrange(padj) %>% .$gene_id %>% .[21:40], mg_samples] %>%
+  as.data.frame() %>% rownames_to_column(var = "ensgene")
+plotTopCounts(top_norm_counts, "Microglia Hom HDR vs. WT: DE genes 21-40 by p-value")
+
+```
+
+
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+# Enrichments
+ipsc.hom_hdr.res.df = ipsc.hom_hdr.res.df %>% left_join(getRPKMSummary(normalized_counts[, HomHDR_samples]), by="gene_id")
+ipsc.het_hdr.res.df = ipsc.het_hdr.res.df %>% left_join(getRPKMSummary(normalized_counts[, HetHDR_samples]), by="gene_id")
+ipsc.ko.res.df = ipsc.ko.res.df %>% left_join(getRPKMSummary(normalized_counts[, KO_samples]), by="gene_id")
+mg.res.df = mg.res.df %>% left_join(getRPKMSummary(normalized_counts[, mg_samples]), by="gene_id")
+
+ipsc.hom_hdr.pathwayEnrich = ipsc.hom_hdr.res.df %>%
+  filter(padj < 0.05, mean.rpkm > 0.5) %>%
+  dplyr::select(gene_id, log2FoldChange) %>%
+  arrange(-log2FoldChange)
+
+ipsc.het_hdr.pathwayEnrich = ipsc.het_hdr.res.df %>%
+  filter(padj < 0.05, mean.rpkm > 0.5) %>%
+  dplyr::select(gene_id, log2FoldChange) %>%
+  arrange(-log2FoldChange)
+
+ipsc.ko.pathwayEnrich = ipsc.ko.res.df %>%
+  filter(padj < 0.05, mean.rpkm > 0.5) %>%
+  dplyr::select(gene_id, log2FoldChange) %>%
+  arrange(-log2FoldChange)
+
+mg.pathwayEnrich = mg.res.df %>%
+  filter(padj < 0.05, mean.rpkm > 0.5) %>%
+  dplyr::select(gene_id, log2FoldChange) %>%
+  arrange(-log2FoldChange)
+
+ipsc.hom_hdr.expressed = ipsc.hom_hdr.res.df %>% arrange(-mean.rpkm) %>% filter(mean.rpkm > 0.5) %>% dplyr::select(gene_id)
+ipsc.het_hdr.expressed = ipsc.het_hdr.res.df %>% arrange(-mean.rpkm) %>% filter(mean.rpkm > 0.5) %>% dplyr::select(gene_id)
+ipsc.ko.expressed = ipsc.ko.res.df %>% arrange(-mean.rpkm) %>% filter(mean.rpkm > 0.5) %>% dplyr::select(gene_id)
+mg.expressed = mg.res.df %>% arrange(-mean.rpkm) %>% filter(mean.rpkm > 0.5) %>% dplyr::select(gene_id)
+
+if (saveFiles) {
+  write.table(ipsc.hom_hdr.pathwayEnrich, file.path(outputPath, "deseq.ipsc.HomHDR.vs.WT.forPathwayEnrichment.txt"), col.names=F, row.names=F, quote=F, sep="\t")
+  write.table(ipsc.hom_hdr.expressed, file.path(outputPath, "deseq.ipsc.HomHDR.vs.WT.expressedGenes.txt"), col.names=F, row.names=F, quote=F, sep="\t")
+  
+  write.table(ipsc.het_hdr.pathwayEnrich, file.path(outputPath, "deseq.ipsc.HetHDR.vs.WT.forPathwayEnrichment.txt"), col.names=F, row.names=F, quote=F, sep="\t")
+  write.table(ipsc.het_hdr.expressed, file.path(outputPath, "deseq.ipsc.HetHDR.vs.WT.expressedGenes.txt"), col.names=F, row.names=F, quote=F, sep="\t")
+  
+  write.table(ipsc.ko.pathwayEnrich, file.path(outputPath, "deseq.ipsc.KO.vs.WT.forPathwayEnrichment.txt"), col.names=F, row.names=F, quote=F, sep="\t")
+  write.table(ipsc.ko.expressed, file.path(outputPath, "deseq.ipsc.KO.vs.WT.expressedGenes.txt"), col.names=F, row.names=F, quote=F, sep="\t")
+  
+  write.table(mg.pathwayEnrich, file.path(outputPath, "deseq.microglia.HDR.vs.WT.forPathwayEnrichment.txt"), col.names=F, row.names=F, quote=F, sep="\t")
+  write.table(mg.expressed, file.path(outputPath, "deseq.microglia.HDR.vs.WT.expressedGenes.txt"), col.names=F, row.names=F, quote=F, sep="\t")
+
+  # Use gProfileR to get enrichments
+  gp.up = gprofiler(query = (ipsc.hom_hdr.res.df %>% filter(padj < 0.05) %>% arrange(padj) %>% filter(log2FoldChange > 0) %>% filter(between(row_number(), 1, 1000)) %>% .$gene_id),
+                    custom_bg = (ipsc.hom_hdr.expressed %>% .$gene_id), organism = "hsapiens")
+  gp.down = gprofiler(query = (ipsc.hom_hdr.res.df %>% filter(padj < 0.05) %>% arrange(padj) %>% filter(log2FoldChange < 0) %>% filter(between(row_number(), 1, 1000)) %>% .$gene_id),
+                      custom_bg = (ipsc.hom_hdr.expressed %>% .$gene_id), organism = "hsapiens")
+  write.table(gp.up %>% filter(domain != "tf") %>% arrange(domain, p.value), file.path(outputPath, "deseq.ipsc.HomHDR.vs.WT.upregulated_genes.gprofiler_enrich.txt"), col.names=T, row.names=F, quote=F, sep="\t")
+  write.table(gp.down %>% filter(domain != "tf") %>% arrange(domain, p.value), file.path(outputPath, "deseq.ipsc.HomHDR.vs.WT.downregulated_genes.gprofiler_enrich.txt"), col.names=T, row.names=F, quote=F, sep="\t")
+  
+  gp.up = gprofiler(query = (ipsc.het_hdr.res.df %>% filter(padj < 0.05) %>% arrange(padj) %>% filter(log2FoldChange > 0) %>% filter(between(row_number(), 1, 1000)) %>% .$gene_id),
+                    custom_bg = (ipsc.het_hdr.expressed %>% .$gene_id), organism = "hsapiens")
+  gp.down = gprofiler(query = (ipsc.het_hdr.res.df %>% filter(padj < 0.05) %>% arrange(padj) %>% filter(log2FoldChange < 0) %>% filter(between(row_number(), 1, 1000)) %>% .$gene_id),
+                      custom_bg = (ipsc.het_hdr.expressed %>% .$gene_id), organism = "hsapiens")
+  write.table(gp.up %>% filter(domain != "tf") %>% arrange(domain, p.value), file.path(outputPath, "deseq.ipsc.HetHDR.vs.WT.upregulated_genes.gprofiler_enrich.txt"), col.names=T, row.names=F, quote=F, sep="\t")
+  write.table(gp.down %>% filter(domain != "tf") %>% arrange(domain, p.value), file.path(outputPath, "deseq.ipsc.HetHDR.vs.WT.downregulated_genes.gprofiler_enrich.txt"), col.names=T, row.names=F, quote=F, sep="\t")
+  
+  gp.up = gprofiler(query = (ipsc.ko.res.df %>% filter(padj < 0.05) %>% arrange(padj) %>% filter(log2FoldChange > 0) %>% filter(between(row_number(), 1, 1000)) %>% .$gene_id),
+                    custom_bg = (ipsc.ko.expressed %>% .$gene_id), organism = "hsapiens")
+  gp.down = gprofiler(query = (ipsc.ko.res.df %>% filter(padj < 0.05) %>% arrange(padj) %>% filter(log2FoldChange < 0) %>% filter(between(row_number(), 1, 1000)) %>% .$gene_id),
+                      custom_bg = (ipsc.ko.expressed %>% .$gene_id), organism = "hsapiens")
+  write.table(gp.up %>% filter(domain != "tf") %>% arrange(domain, p.value), file.path(outputPath, "deseq.ipsc.KO.vs.WT.upregulated_genes.gprofiler_enrich.txt"), col.names=T, row.names=F, quote=F, sep="\t")
+  write.table(gp.down %>% filter(domain != "tf") %>% arrange(domain, p.value), file.path(outputPath, "deseq.ipsc.KO.vs.WT.downregulated_genes.gprofiler_enrich.txt"), col.names=T, row.names=F, quote=F, sep="\t")
+  
+  gp.up = gprofiler(query = (mg.res.df %>% filter(padj < 0.05) %>% arrange(padj) %>% filter(log2FoldChange > 0) %>% filter(between(row_number(), 1, 1000)) %>% .$gene_id),
+                    custom_bg = (mg.expressed %>% .$gene_id), organism = "hsapiens")
+  gp.down = gprofiler(query = (mg.res.df %>% filter(padj < 0.05) %>% arrange(padj) %>% filter(log2FoldChange < 0) %>% filter(between(row_number(), 1, 1000)) %>% .$gene_id),
+                      custom_bg = (mg.expressed %>% .$gene_id), organism = "hsapiens")
+  write.table(gp.up %>% filter(domain != "tf") %>% arrange(domain, p.value), file.path(outputPath, "deseq.microglia.HDR.vs.WT.upregulated_genes.gprofiler_enrich.txt"), col.names=T, row.names=F, quote=F, sep="\t")
+  write.table(gp.down %>% filter(domain != "tf") %>% arrange(domain, p.value), file.path(outputPath, "deseq.microglia.HDR.vs.WT.downregulated_genes.gprofiler_enrich.txt"), col.names=T, row.names=F, quote=F, sep="\t")
+}
+
+```
+
