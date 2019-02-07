@@ -60,3 +60,16 @@ hashJoin.pl --hashFile $JS/gwas/PD/data/Parkinsons_disease_Nguyen_2017_UKBB_GWAX
 gzhead 1 $JS/datasets/GWAS/PD.proxy.bgen.stats.cut.gz > $JS/gwas/PD/data/PD.proxy.bgen.stats.cut.near_SIPA1L2.txt
 tabix $JS/datasets/GWAS/PD.proxy.bgen.stats.cut.gz 1:232333712-232851243 >> $JS/gwas/PD/data/PD.proxy.bgen.stats.cut.near_SIPA1L2.txt
 
+
+################################################################################
+# New variants to check
+F=$JS/datasets/GWAS/Alzheimers_disease_Liu_2017_UKBB_GWAX_meta_v2.sorted.txt.gz
+(gzhead 1 $F; tabix $F 5:74151084-75151084) > Alzheimers_disease_Liu_2017_UKBB_GWAX_meta_v2.sorted.near_HMGCR.txt
+(gzhead 1 $F; zcat $F | grep -P "rs3846662\t") > Alzheimers_disease_Liu_2017_UKBB_GWAX_meta_v2.rs3846662.txt
+
+setwd("/Users/jeremys/work/opentargets/gwas/AD/data")
+pdf("AD_GWAS_near_HMGCR.pdf", width=8, height=6)
+df = readr::read_tsv("/Users/jeremys/work/opentargets/gwas/AD/data/Alzheimers_disease_Liu_2017_UKBB_GWAX_meta_v2.sorted.near_HMGCR.txt")
+ggplot(df, aes(x=BP, y=-log10(META_P))) + geom_point(alpha=0.7) + theme_bw() + ggtitle("AD GWAS near HMGCR")
+dev.off()
+
