@@ -11,7 +11,6 @@ suppressMessages(library(egg)) # for ggarrange
 suppressMessages(library(cowplot)) # could probably use just one of these two plotting libraries
 suppressMessages(library(aod)) # for betabin
 suppressMessages(library(ggdendro))
-suppressMessages(library(optparse))
 suppressMessages(library(variancePartition))
 suppressMessages(library(doParallel))
 cl <- makeCluster(4)
@@ -20,211 +19,28 @@ registerDoParallel(cl)
 options(stringsAsFactors = F)
 
 opt = NULL
-#setwd("/Users/jeremys/work/opentargets/experiment/transcribed/batch1_redo")
-#setwd("/Users/jeremys/work/opentargets/experiment/transcribed/batch2")
-#setwd("/Users/jeremys/work/opentargets/experiment/transcribed/batch1_snp26_repeats")
-#setwd("/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated")
-#setwd("/Users/jeremys/work/opentargets/experiment/transcribed/clu_sipa1l2")
 
-
-main = function()
+runGenIE = function(option_list)
 {
-  cmd_line = commandArgs()
-  cat("Command line:\n")
-  cat(paste(gsub("--file=", "", cmd_line[4], fixed=T),
-            paste(cmd_line[6:length(cmd_line)], collapse = " "),
-            "\n\n"))
-  opt_list <- list(
-    make_option(c("--regions"), type="character", default=NULL, metavar="FILE.tsv", help="Path to tab-separated input file listing regions to analyze. Required."),
-    make_option(c("--replicates"), type="character", default=NULL, metavar="FILE.tsv", help="Path to tab-separated input file listing replicates. Required."),
-    make_option(c("--out"), type="character", default=NULL, metavar="outpath", help="Base path for output files. Required."),
-    make_option(c("--minMapQ"), type="integer", default=0, metavar="INT", help="Discard reads with mapping quality lower than minMapQ [default %default]"),
-    #make_option(c("--subsample"), type="numeric", default=NULL, help=""),
-    make_option(c("--max_mismatch_frac"), type="numeric", default=0.05, metavar="FLOAT", help="[default %default]"),
-    make_option(c("--viewing_window"), type="integer", default=50, metavar="INT", help="[default %default]"),
-    make_option(c("--editing_window"), type="integer", default=10, metavar="INT", help="[default %default]"),
-    make_option(c("--min_window_overlap"), type="integer", default=30, metavar="INT", help="[default %default]"),
-    make_option(c("--exclude_multiple_deletions"), type="logical", default=F, action="store_true", help="[default %default]"),
-    make_option(c("--exclude_nonspanning_reads"), type="logical", default=T, action="store_true", help="[default %default]"),
-    make_option(c("--exclude_nonspanning_deletions"), type="logical", default=T, action="store_true", help="[default %default]"),
-    make_option(c("--qc_plot_max_udps"), type="integer", default=20, metavar="INT", help="[default %default]"),
-    make_option(c("--qc_plot_min_udp_fraction"), type="integer", default=0.005, metavar="FLOAT", help="[default %default]"),
-    make_option(c("--qc_plot_exclude_wt"), type="logical", default=T, action="store_true", help="[default %default]"),
-    make_option(c("--del_span_start"), type="integer", default=NULL, help="[default %default]"),
-    make_option(c("--del_span_end"), type="integer", default=NULL, help="[default %default]"),
-    make_option(c("--uns_plot_min_gDNA"), type="integer", default=10, metavar="INT", help="[default %default]"),
-    make_option(c("--uns_plot_min_cDNA"), type="integer", default=0, metavar="INT", help="[default %default]"),
-    make_option(c("--uns_plot_max_udps"), type="integer", default=40, metavar="INT", help="[default %default]"),
-    make_option(c("--no_allele_profile"), type="logical", default=F, action="store_true", help="[default %default]"),
-    make_option(c("--no_site_profile"), type="logical", default=F, action="store_true", help="[default %default]"),
-    make_option(c("--no_udp_profile"), type="logical", default=F, action="store_true", help="[default %default]"),
-    make_option(c("--no_uns_profile"), type="logical", default=F, action="store_true", help="[default %default]"),
-    make_option(c("--no_stats"), type="logical", default=F, action="store_true", help="[default %default]"),
-    make_option(c("--replicate_qc_plots"), type="logical", default=T, action="store_true", help="[default %default]"),
-    make_option(c("--no_summary_plots"), type="logical", default=F, action="store_true", help="[default %default]"),
-    make_option(c("--no_replicate_plots"), type="logical", default=F, action="store_true", help="[default %default]"),
-    make_option(c("--variance_analysis"), type="logical", default=F, action="store_true", help="[default %default]"),
-    make_option(c("--variance_analysis_min_count"), type="integer", default=100, help="[default %default]"),
-    make_option(c("--variance_analysis_min_fraction"), type="numeric", default=0.001, help="[default %default]"),
-    make_option(c("--power_analysis"), type="logical", default=F, action="store_true", help="[default %default]"),
-    make_option(c("--plot_width"), type="integer", default=8, metavar="INT", help="[default %default]"),
-    make_option(c("--plot_height"), type="integer", default=7, metavar="INT", help="[default %default]"),
-    make_option(c("--read_data"), type="character", default=NULL)
-  )
-  
-  parser = OptionParser(usage = "paired.deletion.analysis.R --regions file.tsv --replicates file.tsv --out output_path [options]",
-                        option_list = opt_list)
-  opt <<- parse_args(parser)
-  
-  default_opts = list(
-    minMapQ = 0,
-    subsample = NULL,
-    max_mismatch_frac = 0.05,
-    viewing_window = 40,
-    editing_window = 5, # window around the cut site for counting deletions as edits
-    min_window_overlap = 30, # minimum number of read bases correctly aligned within the region of interest
-    exclude_multiple_deletions = F,
-    exclude_nonspanning_reads = T,
-    exclude_nonspanning_deletions = T,
-    qc_plot_max_udps = 10,
-    qc_plot_min_udp_fraction = 0.002,
-    qc_plot_exclude_wt = T,
-    uns_plot_min_gDNA = 10,
-    uns_plot_min_cDNA = 0,
-    uns_plot_max_udps = 40,
-    no_allele_profile = F,
-    no_site_profile = F,
-    no_udp_profile = F,
-    no_uns_profile = F,
-    no_stats = F,
-    replicate_qc_plots = T,
-    no_replicate_plots = T,
-    variance_analysis = F,
-    power_analysis = F,
-    plot_width = 8,
-    plot_height = 7,
-    variance_analysis_min_count = 100,
-    variance_analysis_min_fraction = 0.001)
-  
-  # opt <<- default_opts
-  # opt$regions <<- "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_redo/regions.tsv"
-  # opt$replicates <<- "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_redo/replicates.tsv"
-  # opt$out <<- "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_redo/analysis/batch1_redo.sarah.edit_dels.2bp_window.new_varcomp"
-  # opt$variance_analysis <<- T
-  # opt$power_analysis <<- T
-  # opt$read_data <<- "analysis/batch1_redo.sarah.read_data.rds"
-  # 
-  # opt <<- default_opts
-  # opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1/regions.tsv"
-  # opt$replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1/replicates.tsv"
-  # opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1/analysis/batch1.2bp_window.new"
-  # opt$power_analysis = T
-  # opt$read_data = "analysis/batch1.read_data.new.rds"
-  # 
-  # opt <<- default_opts
-  # opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated/batch1_updated.regions.ref.tsv"
-  # opt$replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated/batch1_updated.replicates.tsv"
-  # opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated/analysis/batch1_updated.edit_dels.10bp_window.new_stats"
-  # opt$read_data = "analysis/batch1_updated.read_data.rds"
-
-  opt <<- default_opts
-  opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated/batch1_updated.regions.varcomp.tsv"
-  opt$replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated/batch1_updated.replicates.tsv"
-  opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated/analysis/batch1_updated.edit_dels.10bp_window.variance_components"
-  opt$variance_analysis = T
-  opt$read_data = "analysis/batch1_updated.read_data.rds"
-  # 
-  # opt <<- default_opts
-  # opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/batch2.regions.amplicon.tsv"
-  # opt$replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/batch2.replicates.amplicon.flash.tsv"
-  # opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/analysis/batch2.edit_dels.10bp_window.new_stats"
-  # opt$read_data = "analysis/batch2.combined.flash.read_data.rds"
-  
-  # opt <<- default_opts
-  # opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/batch2.regions.amplicon.excl.snp6.tsv"
-  # opt$replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/batch2.replicates.amplicon.flash.excl.snp6.tsv"
-  # opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/analysis/batch2.edit_dels.10bp_window.excl.snp6.new"
-  # opt$read_data = "analysis/batch2.combined.flash.read_data.excl.snp6.rds"
-  
-  # opt <<- default_opts
-  # opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/batch2.regions.amplicon.snp22.tsv"
-  # opt$replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/batch2.replicates.amplicon.flash.tsv"
-  # opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/analysis/batch2.edit_dels.10bp_window.snp22.covering90-119"
-  # opt$read_data = "analysis/batch2.combined.flash.read_data.snp22.rds"
-  # opt$del_span_start = 90
-  # opt$del_span_end = 119
-  # opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/analysis/batch2.edit_dels.10bp_window.snp22.covering100-111"
-  # opt$read_data = "analysis/batch2.combined.flash.read_data.snp22.rds"
-  # opt$del_span_start = 100
-  # opt$del_span_end = 111
-  # opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/batch2.regions.amplicon.snp22.splice.tsv"
-  # opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch2/analysis/batch2.edit_dels.10bp_window.snp22.splice"
-  # opt$del_span_start = 40
-  # opt$del_span_end = 105
-  
-  # opt <<- default_opts
-  # opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated/batch1_updated.regions.ref.snp26.tsv"
-  # opt$replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated/batch1_updated.replicates.tsv"
-  # opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated/analysis/batch1_updated.edit_dels.10bp_window.CCDC6snp26.covering"
-  # opt$read_data = "analysis/batch1_updated.read_data.rds"
-  # opt$del_span_start = 80
-  # opt$del_span_end = 86
-  # 
-  # opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated/batch1_updated.regions.ref.snp26.splice.tsv"
-  # opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_updated/analysis/batch1_updated.edit_dels.10bp_window.CCDC6snp26.splice"
-  # opt$del_span_start = 1
-  # opt$del_span_end = 80
-  
-  # opt <<- default_opts
-  # opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_snp26_repeats/batch1_snp26_repeats.regions.tsv"
-  # opt$replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_snp26_repeats/batch1_snp26_repeats.replicates.tsv"
-  # opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/batch1_snp26_repeats/analysis/batch1_snp26_repeats.new2"
-  # opt$read_data = "analysis/batch1_snp26_repeats.flash.read_data.rds"
-  # opt$variance_analysis = T
-  # opt$replicate_qc_plots = F
-  # opt$plot_width = 11
-  # opt$plot_height = 8
-  
-  # opt <<- default_opts
-  # opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/clu_sipa1l2/clu_sipa1l2.regions.excl.tsv"
-  # opt$replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/clu_sipa1l2/clu_sipa1l2.meta.excl.tsv"
-  # opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/clu_sipa1l2/analysis/clu_sipa1l2.excl.edit_dels.10bp_window"
-  # opt$read_data = "analysis/clu_sipa1l2.read_data.all.rds"
-  # opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/clu_sipa1l2/clu_sipa1l2.regions.new.tsv"
-  # opt$replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/clu_sipa1l2/clu_sipa1l2.meta.tsv"
-  # opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/clu_sipa1l2/analysis/clu_sipa1l2.edit_dels.10bp_window.new"
-  # opt$read_data = "analysis/clu_sipa1l2.read_data.rds"
-  # opt$regions = "/Users/jeremys/work/opentargets/experiment/transcribed/clu_sipa1l2/clu_sipa1l2.regions.except9.tsv"
-  # opt$replicates = "/Users/jeremys/work/opentargets/experiment/transcribed/clu_sipa1l2/clu_sipa1l2.meta.all.tsv"
-  # opt$out = "/Users/jeremys/work/opentargets/experiment/transcribed/clu_sipa1l2/analysis/clu_sipa1l2.all.edit_dels.10bp_window.new_stats"
-  # opt$read_data = "analysis/clu_sipa1l2.read_data.all.rds"
-  # opt$plot_width = 11
-  # opt$plot_height = 8
+  opt <<- option_list
   
   cat("All options:\n")
   printList(opt)
   
-  checkRequiredOpt = function(opt, parser, optName) {
-    if (is.null(opt[[optName]])) {
-      print_help(parser)
-      cat(sprintf("ERROR: argument --%s is required\n\n", optName))
-      stop()
-    }
-  }
-  checkRequiredOpt(opt, parser, "regions")
-  checkRequiredOpt(opt, parser, "replicates")
-  checkRequiredOpt(opt, parser, "out")
-  
   if (!is.null(opt$del_span_start) & is.null(opt$del_span_end) | is.null(opt$del_span_start) & !is.null(opt$del_span_end)) {
     stop("Both options 'del_span_start' and 'del_span_end' must be specified together. Only one was given.")
   }
-  opt$custom_del_span = F
+  opt$custom_del_span <<- F
   if (!is.null(opt$del_span_start) & !is.null(opt$del_span_end)) {
-    opt$custom_del_span = T
+    opt$custom_del_span <<- T
   }
   
   regions.df = readr::read_tsv(opt$regions, col_types="ccciiiiccc")
   #regions.df = regions.df %>% dplyr::filter((index %in% c("29")))
+  if (any(duplicated(regions.df$name))) {
+    duplicated_region = regions.df$name[ which(duplicated(regions.df$name))[1] ]
+    stop(sprintf("All region names must be unique. Found duplicated region name: %s.", duplicated_region))
+  }
   region_names = unique(regions.df$name)
   
   replicates.df = readr::read_tsv(opt$replicates)
@@ -239,9 +55,9 @@ main = function()
   }
   
   read_data = NULL
-  opt$save_read_data = F
+  opt$save_read_data <<- F
   if (!is.null(opt$read_data)) {
-    opt$save_read_data = !file.exists(opt$read_data)
+    opt$save_read_data <<- !file.exists(opt$read_data)
     if (file.exists(opt$read_data)) {
       read_data = readRDS(opt$read_data)
     }
@@ -394,6 +210,9 @@ main = function()
 
 statsSummaryPlot = function(stats.summary.df) {
   exp_names = sapply(stats.summary.df$name, FUN = function(s) strsplit(s, ",", T)[[1]][1])
+  if (any(duplicated(exp_names))) {
+    exp_names = stats.summary.df$name
+  }
   stats.summary.df$name = factor(as.character(exp_names), levels=exp_names)
   
   getSignificanceStr = function(pval) {
@@ -922,10 +741,14 @@ doReplicateDeletionAnalysis = function(name, replicate, type, bam_file, sequence
   reads.df$udp = sapply(reads.df$read_chars, FUN=getReadCharsUDP, wt_profile_chars)
   #reads.df$udp = sapply(reads.df$region_read, FUN=getReadUDP, wt_profile_chars) # SLOWER
   
+  reads.df$is_wt_allele = (reads.df$udp == wt_profile)
+  # make sure we only count as WT those reads which actually cover the HDR site
+  reads.df$is_wt_allele[!reads.df$spanning_read] = NA
+  
   reads.df$has_any_deletion = sapply(reads.df$udp, FUN=function(s) grepl("[*]", s))
   rel_cut_site = sites$cut_site - sites$start + 1
   if (opt$exclude_nonspanning_deletions) {
-    reads.df$has_crispr_deletion = grepl("[*]", substr(reads.df$udp, rel_cut_site - opt$editing_window, rel_cut_site + opt$editing_window))
+    reads.df$has_crispr_deletion = (!reads.df$is_wt_allele & grepl("[*]", substr(reads.df$udp, rel_cut_site - opt$editing_window, rel_cut_site + opt$editing_window)) )
     
     # We change the UDPs to "zero out" any deletions that don't overlap
     # with the "editing region" defined by the cut site and editing_window
@@ -943,7 +766,7 @@ doReplicateDeletionAnalysis = function(name, replicate, type, bam_file, sequence
       return(udp)
     }
     if (sum(reads.df$has_any_deletion) > 0) {
-      reads.df$udp[reads.df$has_any_deletion] = sapply(reads.df$udp[reads.df$has_any_deletion], updateUDPEdits, rel_cut_site, opt$editing_window)
+      reads.df$udp[reads.df$has_any_deletion & !reads.df$is_wt_allele] = sapply(reads.df$udp[reads.df$has_any_deletion & !reads.df$is_wt_allele], updateUDPEdits, rel_cut_site, opt$editing_window)
       # If we have zeroed out a deletion, then it's important that we also zero out
       # the flag for whether it has any deletion.
       reads.df$has_any_deletion[reads.df$has_any_deletion] = sapply(reads.df$udp[reads.df$has_any_deletion], FUN=function(s) grepl("[*]", s))
@@ -959,21 +782,19 @@ doReplicateDeletionAnalysis = function(name, replicate, type, bam_file, sequence
       sapply(reads.df$udp[reads.df$has_multiple_deletions], FUN=function(s) grepl("[*]+[^*]+[*]+", s))
   }
   
-  # Identify which reads are WT or HDR. Technically this only depends on the UDP
-  # and not the entire read itself, but we compute it now so that we can accurately
-  # count mismatches, without counting the introduced SNPs themselves as mismatches.
+  # Do this again, to count as WT any reads which had non-CRISPR deletions zeroed out
   reads.df$is_wt_allele = (reads.df$udp == wt_profile)
-  if (any(reads.df$is_wt_allele & reads.df$has_crispr_deletion)) {
-    stop("ERROR: unexpected - found read classified as WT allele but having deletion")
-  }
   # make sure we only count as WT those reads which actually cover the HDR site
   reads.df$is_wt_allele[!reads.df$spanning_read] = NA
+  # If the WT profile has a deletion, then these should not be counted as CRISPR deletions
+  reads.df$has_crispr_deletion[reads.df$is_wt_allele] = F
   
   n_wt_vars = sum(isDNALetter(wt_profile_chars) & wt_profile_chars != ref_seq_chars)
   if (n_wt_vars > 0) {
     reads.df$mismatch_count[reads.df$is_wt_allele] = reads.df$mismatch_count[reads.df$is_wt_allele] - n_wt_vars
   }
   
+  # Identify which reads are HDR.
   reads.df$is_hdr_allele = F
   if (hdr_profile != "") {
     if (nchar(hdr_profile) != region_length) {
@@ -981,9 +802,10 @@ doReplicateDeletionAnalysis = function(name, replicate, type, bam_file, sequence
     }
     # Check that the HDR profile and WT profile have DNA characters at
     # the same positions
-    if (any((hdr_profile_chars == "-") != (wt_profile_chars == "-"))) {
-      stop("Error: HDR profile and WT profile should both indicate the expected sequence letters at the same positions")
-    }
+    # 
+    #if (any((hdr_profile_chars == "-") != (wt_profile_chars == "-"))) {
+    #  stop("Error: HDR profile and WT profile should both indicate the expected sequence letters at the same positions")
+    #}
     reads.df$is_hdr_allele = (reads.df$udp == hdr_profile)
     if (!any(hdr_profile_chars == "*")) {
       # If the HDR profile doesn't have a deletion itself, then we don't expect any HDR alleles to have
@@ -2126,6 +1948,7 @@ doVariancePartitionPlot = function(vp.df, residuals=T, color = NA) {
     theme(legend.position="none") + 
     theme(axis.text.x=element_text(angle=20, hjust = 1), axis.title.x=element_blank(), panel.grid=element_blank()) +
     ylab("Variance explained (%)") +
+    ylim(c(0,100)) +
     scale_fill_manual(values = c("gray95"))
   #  scale_fill_manual(values = c(gg_color_hue(numVariables-1), "gray85"))
   if (!is.na(color)) {
@@ -2138,6 +1961,10 @@ getVarianceComponentsPlots = function(replicate.udp.df, replicates.df, method = 
   replicate_cols = colnames(replicates.df)[grepl("^replicate_", colnames(replicates.df))]
   if (length(replicate_cols) < 1) {
     stop("--variance_analysis option given but no columns beginning with 'replicate_' found in the --replicates file")
+  }
+  # Ensure that replicate cols are treated as factors
+  for (col in replicate_cols) {
+    replicates.df[, col] = as.factor(replicates.df[, col, drop=T])
   }
   
   # Subset replicate info dataframe to those replicates in replicate.udp.df
@@ -2851,61 +2678,3 @@ printList = function(l, prefix = "    ") {
   cat(paste(paste(paste0(prefix, list_strs), collapse = "\n"), "\n"))
 }
 
-
-###########################################################################
-##' commandArgs parsing
-##' 
-##' return a named list of command line arguments
-##'
-##' Usage:
-##' call the R script thus
-##'   ./myfile.R --args myarg=something
-##' or
-##'   R CMD BATCH --args myarg=something myfile.R
-##'
-##' Then in R do
-##'   myargs <- getArgs()
-##' and myargs will be a named list
-##' > str(myargs)
-##' List of 2
-##' $ file : chr "myfile.R"
-##' $ myarg: chr "something"
-##'
-##' @title getArgs
-##' @param verbose print verbage to screen 
-##' @param defaults a named list of defaults, optional
-##' @return a named list
-##' @author Chris Wallace
-getArgs = function(verbose=FALSE, defaults=NULL) {
-  myargs <- gsub("^--","",commandArgs(TRUE))
-  setopts <- !grepl("=",myargs)
-  if(any(setopts))
-    myargs[setopts] <- paste(myargs[setopts],"=notset",sep="")
-  myargs.list <- strsplit(myargs,"=")
-  myargs <- lapply(myargs.list,"[[",2 )
-  names(myargs) <- lapply(myargs.list, "[[", 1)
-  
-  ## logicals
-  if(any(setopts))
-    myargs[setopts] <- TRUE
-  
-  ## defaults
-  if(!is.null(defaults)) {
-    defs.needed <- setdiff(names(defaults), names(myargs))
-    if(length(defs.needed)) {
-      myargs[ defs.needed ] <- defaults[ defs.needed ]
-    }
-  }
-  
-  ## verbage
-  if(verbose) {
-    cat("read",length(myargs),"named args:\n")
-    print(myargs)
-  }
-  myargs
-}
-
-
-###########################################################################
-
-system.time( main() )
