@@ -66,6 +66,7 @@ rpkm.avgs.df = getRPKMSummary(normalized_counts)
 
 # Transform with variance stabilizing transformation, and get the updated matrix
 vsd <- vst(dds, blind=T)
+vsd_cor <- cor(assay(vsd))
 ```
 
 
@@ -85,6 +86,67 @@ dds.ipsc <- estimateSizeFactors(dds.ipsc)
 normalized_counts.ipsc <- counts(dds.ipsc, normalized = T)
 normalized_counts.ipsc2 = normalized_counts.ipsc %>% as.data.frame() %>% rownames_to_column(var="gene_id")
 ```
+
+Let's look again at the clustering & PCA of samples, this time without clone H11.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+ipsc_samplenames = meta.df %>% filter(cell_type == "ipsc", clone != "H11") %>% .$sample_name
+pheatmap(vsd_cor[ipsc_samplenames, ipsc_samplenames],
+         cluster_cols = T, cluster_rows = T, treeheight_col = 30,
+         annotation_col = meta.df[meta.df$cell_type == "ipsc",] %>% select(cell_type, condition),
+         show_colnames = F, fontsize = 9, main = "iPSC RNA-seq sample correlations")
+
+microglia_samplenames = meta.df %>% filter(cell_type == "microglia", clone != "H11") %>% .$sample_name
+pheatmap(vsd_cor[microglia_samplenames, microglia_samplenames],
+         cluster_cols = T, cluster_rows = T, treeheight_col = 30,
+         annotation_col = meta.df[meta.df$cell_type == "microglia",] %>% select(cell_type, condition),
+         show_colnames = F, fontsize = 9, main = "Microglia RNA-seq sample correlations")
+
+```
+
+Clustering is identical to previously in the part of the tree without H11.
+
+Now look at PCA plots excluding clone H11.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+meta.ipsc.exclH11.df = meta.df %>% filter(cell_type == "ipsc", clone != "H11")
+rownames(meta.ipsc.exclH11.df) = meta.ipsc.exclH11.df$sample_name
+dds.ipsc.exclH11 = DESeqDataSetFromMatrix(countData = rawcounts.mat[, meta.ipsc.exclH11.df$sample_name],
+                                  colData = meta.ipsc.exclH11.df,
+                                  design = ~ condition)
+
+dds.ipsc.exclH11 <- estimateSizeFactors(dds.ipsc.exclH11)
+
+# Extract the normalized counts
+normalized_counts.ipsc.exclH11 <- counts(dds.ipsc.exclH11, normalized = T)
+
+# Transform with variance stabilizing transformation, and get the updated matrix
+vsd.ipsc.exclH11 <- vst(dds.ipsc.exclH11, blind=T)
+plotPCA(vsd.ipsc.exclH11, intgroup="condition") + ggtitle("iPSC excl H11: PCA of normalized counts")
+```
+
+The iPSC samples might have some weak clustering by editing group...?
+
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+meta.mg.exclH11.df = meta.df %>% filter(cell_type == "microglia", clone != "H11")
+rownames(meta.mg.exclH11.df) = meta.mg.exclH11.df$sample_name
+dds.mg.exclH11 = DESeqDataSetFromMatrix(countData = rawcounts.mat[, meta.mg.exclH11.df$sample_name],
+                                  colData = meta.mg.exclH11.df,
+                                  design = ~ condition)
+
+dds.mg.exclH11 <- estimateSizeFactors(dds.mg.exclH11)
+
+# Extract the normalized counts
+normalized_counts.mg.exclH11 <- counts(dds.mg.exclH11, normalized = T)
+rpkm.avgs.mg.exclH11.df = getRPKMSummary(normalized_counts.mg.exclH11)
+
+# Transform with variance stabilizing transformation, and get the updated matrix
+vsd.mg.exclH11 <- vst(dds.mg.exclH11, blind=T)
+plotPCA(vsd.mg.exclH11, intgroup=c("condition", "clone")) + ggtitle("Microglia excl H11: PCA of normalized counts")
+```
+
+In microglia, there's no obvious clustering by HDR or WT... but I don't think we have enough samples to say much.
 
 ```{r PlotDE, warning=FALSE, message=FALSE, echo=FALSE}
 plotDE = function(deseq.res.df, title, sigThreshold=0.01, xlim=NULL, ylim=NULL, maxLabels=100, labelSize=2.2) {
@@ -136,7 +198,7 @@ plotDE = function(deseq.res.df, title, sigThreshold=0.01, xlim=NULL, ylim=NULL, 
 
 ## iPSC differential expression: HDR HOM vs WT
 
-Get DE genes between HDR_HOM (all samples) and WT.
+Revisit the DE genes between HDR_HOM (all samples) and WT - same as before, so that we can compare with these plots further below when H11 is excluded.
 
 ```{r, warning=FALSE, message=FALSE, echo=FALSE}
 dds.ipsc <- DESeq(dds.ipsc)
@@ -280,8 +342,91 @@ if (saveFiles) {
 }
 ```
 
+
+Let's also do DE analysis of clone H11 in microglia (vs. microglia clones D5, D8).
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+# Try to find out what differs between Microglia clone H11 and the other two HDR clones.
+meta.mg.H11.df = meta.df %>% filter(cell_type == "microglia", condition == "HDR_HOM")
+rownames(meta.mg.H11.df) = meta.mg.H11.df$sample_name
+meta.mg.H11.df$clone2 = "D5_8"
+meta.mg.H11.df$clone2[meta.mg.H11.df$clone == "H11"] = "H11"
+
+dds.mg.H11 = DESeqDataSetFromMatrix(countData = rawcounts.mat[, meta.mg.H11.df$sample_name],
+                                      colData = meta.mg.H11.df,
+                                      design = ~ clone2)
+
+dds.mg.H11 <- estimateSizeFactors(dds.mg.H11)
+
+dds.mg.H11 <- DESeq(dds.mg.H11)
+plotDispEsts(dds.mg.H11, main="Microglia clone H11 vs clones D5/8 diffexp dispersion estimates")
+
+mg.H11.res <- results(dds.mg.H11, contrast = c("clone2", "H11", "D5_8"), alpha = 0.05)
+mg.H11.res <- lfcShrink(dds.mg.H11, contrast =  c("clone2", "H11", "D5_8"), res = mg.H11.res)
+
+# Add annotations to all genes
+grch38_dedup = grch38 %>% select(-entrez) %>% filter(!duplicated(ensgene))
+mg.H11.res.df = data.frame(mg.H11.res) %>%
+  rownames_to_column(var = "gene_id") %>%
+  arrange(padj) %>% filter(!duplicated(gene_id)) %>%
+  left_join(grch38_dedup %>% select(ensgene, symbol, biotype, description), by=c("gene_id" = "ensgene"))
+
+#plotMA(mg.H11.res, ylim=c(-1, 1), main="Microglia diffexp clone H11 vs D5/8 MA plot")
+plotDE(mg.H11.res.df %>% mutate(gene_name = symbol), "Microglia diffexp clone H11 vs D5/8 MA plot", sigThreshold = .01, xlim=c(10, 1e5), ylim=c(-2.7, 4.1))
+
+ggplot(mg.H11.res.df) + 
+  geom_point(aes(x = log2FoldChange, y = -log10(padj), color = padj < 0.05)) + 
+  xlab("log2 fold change") + 
+  ylab("-log10 adjusted p-value") + 
+  theme_bw() +
+  theme(legend.position = "none", 
+        plot.title = element_text(size = rel(1.5), hjust = 0.5), 
+        axis.title = element_text(size = rel(1.25))) +
+  xlim(c(-3, 3)) + ylim(c(0, 30)) +
+  ggtitle("Microglia diffexp clone H11 vs D5/8 volcano plot: (y axis cut off)")
+
+summary(mg.H11.res)
+
+if (saveFiles) {
+  mg.H11.res.df %>% write.table(file=file.path(outputPath, "microglia_H11_vs_D5_8_DE_genes.tsv"), sep="\t", quote=F, row.names=F, col.names=T)
+  mg.H11.res.df %>% filter(padj < 0.05) %>% write.table(file=file.path(outputPath, "microglia_H11_vs_D5_8_genes.sig.tsv"), sep="\t", quote=F, row.names=F, col.names=T)
+}
+```
+
+
+Do some pathway enrichment on these DE results...
+
+Enriched terms for both upregulated and downregulated genes seem to relate to immune system process and response to stimulus, so it's not obvious that these enrichments relate to those seen for clone H11 in iPSCs. The full results are saved in output text files.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+# Enrichments
+mg.H11.res.df = mg.H11.res.df %>% left_join(getRPKMSummary(normalized_counts[, meta.mg.H11.df$sample_name]), by="gene_id")
+
+mg.H11.pathwayEnrich = mg.H11.res.df %>%
+  filter(padj < 0.05, mean.rpkm > 0.5) %>%
+  dplyr::select(gene_id, log2FoldChange) %>%
+  arrange(-log2FoldChange)
+
+mg.H11.expressed = mg.H11.res.df %>% arrange(-mean.rpkm) %>% filter(mean.rpkm > 0.5) %>% dplyr::select(gene_id)
+
+if (saveFiles) {
+  write.table(mg.H11.pathwayEnrich, file.path(outputPath, "deseq.microglia.H11_vs_D5_8.forPathwayEnrichment.tsv"), col.names=F, row.names=F, quote=F, sep="\t")
+  write.table(mg.H11.expressed, file.path(outputPath, "deseq.microglia.H11_vs_D5_8.expressedGenes.tsv"), col.names=F, row.names=F, quote=F, sep="\t")
+
+  # Use gProfileR to get enrichments
+  gp.up = gprofiler(query = (mg.H11.res.df %>% filter(padj < 0.05) %>% arrange(padj) %>% filter(log2FoldChange > 0) %>% filter(between(row_number(), 1, 1000)) %>% .$gene_id),
+                    custom_bg = (mg.H11.expressed %>% .$gene_id), organism = "hsapiens")
+  gp.down = gprofiler(query = (mg.H11.res.df %>% filter(padj < 0.05) %>% arrange(padj) %>% filter(log2FoldChange < 0) %>% filter(between(row_number(), 1, 1000)) %>% .$gene_id),
+                      custom_bg = (mg.H11.expressed %>% .$gene_id), organism = "hsapiens")
+  write.table(gp.up %>% filter(domain != "tf") %>% arrange(domain, p.value), file.path(outputPath, "deseq.microglia.H11_vs_D5_8.upregulated_genes.gprofiler_enrich.tsv"), col.names=T, row.names=F, quote=F, sep="\t")
+  write.table(gp.down %>% filter(domain != "tf") %>% arrange(domain, p.value), file.path(outputPath, "deseq.microglia.H11_vs_D5_8.downregulated_genes.gprofiler_enrich.tsv"), col.names=T, row.names=F, quote=F, sep="\t")
+}
+```
+
+
 ## DE analysis of HOM_HDR:WT excluding clone H11
 
+Next, we can do the HOM_HDR:WT comparison in iPSCs excluding clone H11 (so 2 HDR samples vs. 3 WT samples), to see if we get better results when H11 is excluded.
 
 ```{r, warning=FALSE, message=FALSE, echo=FALSE}
 meta.ipsc.exclH11.df = meta.df %>% filter(cell_type == "ipsc", clone != "H11")
@@ -352,7 +497,7 @@ if (saveFiles) {
 
 ## Compare the DE analysis of HOM_HDR:WT with the same analysis excluding H11
 
-Let's compare the p values and log2FoldChanges for the HDR_HOM:WT comparison either including or excluding clone H11.
+Let's compare the p values and log2FoldChanges for the HDR_HOM:WT comparison either including or excluding clone H11. In other words, we want to see if we get different HDR:WT results when clone H11 is excluded.
 
 ```{r, warning=FALSE, message=FALSE, echo=FALSE}
 ipsc.hom_hdr.df2 = ipsc.hom_hdr.res.df %>%

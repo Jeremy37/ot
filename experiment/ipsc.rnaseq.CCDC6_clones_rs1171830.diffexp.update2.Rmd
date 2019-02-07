@@ -1,0 +1,509 @@
+# RNA-seq of iPSC and microglia edited for CCDC6 rs1171830
+
+This addendum to the main analysis looks at how the results change when clone HOM_HDR clone H11 is removed from the iPSC data.
+
+```{r Setup, message=FALSE, warning=FALSE, echo=FALSE}
+library(pheatmap)
+library(DESeq2)
+library(pcaMethods)
+library(tidyverse)
+library(RColorBrewer)
+library(annotables)
+library(gProfileR)
+library(GOsummaries)
+
+knitr::opts_chunk$set(fig.width=8, fig.height=5.2)
+
+root = "/Users/jeremys/work/opentargets/experiment/RNA/CCDC6_clones_rs1171830"
+outputPath = file.path(root, "analysis")
+#setwd(root)
+
+counts.fname = file.path(root, "CCDC6_clones_rs1171830.counts.tsv.gz")
+meta.fname = file.path(root, "CCDC6_clones_rs1171830.meta.tsv")
+saveFiles = T
+```
+
+```{r LoadCounts, warning=FALSE, message=FALSE, echo=FALSE}
+readtsv = function(fname, ...) { readr::read_tsv(fname, ...) %>% as.data.frame() }
+
+readCounts = function(fname) {
+  counts = readtsv(fname)
+  # Fix gene names to remove the version number (e.g. ".4" in ENSG00000223972.4)
+  gene_ids <- gsub("\\.[\\d]+", "", counts[,1], perl=T)
+  counts[,1] = gene_ids
+  rownames(counts) = gene_ids
+  counts
+}
+
+counts.df = readCounts(counts.fname)
+rawcounts.mat = counts.df %>% select(-gene_id, -length) %>% as.matrix()
+rownames(rawcounts.mat) = counts.df$gene_id
+
+gene.meta = counts.df[,c(1,2)]
+
+meta.df = read_tsv(meta.fname)
+# Ensure the metadata rows are in the same order as the counts columns
+meta.df = meta.df[match(colnames(rawcounts.mat), meta.df$sample_name),]
+meta.df = as.data.frame(meta.df)
+rownames(meta.df) = meta.df$sample_name
+
+meta.ipsc.df = meta.df %>% filter(cell_type == "ipsc")
+rownames(meta.ipsc.df) = meta.ipsc.df$sample_name
+
+meta.mg.df = meta.df %>% filter(cell_type == "microglia")
+rownames(meta.mg.df) = meta.mg.df$sample_name
+
+HomHDR_samples = meta.ipsc.df %>% filter(condition %in% c("WT", "HDR_HOM")) %>% .$sample_name
+HetHDR_samples = meta.ipsc.df %>% filter(condition %in% c("WT", "HDR_HET")) %>% .$sample_name
+KO_samples = meta.ipsc.df %>% filter(condition %in% c("WT", "KO")) %>% .$sample_name
+mg_samples = meta.mg.df$sample_name
+
+dds = DESeqDataSetFromMatrix(countData = rawcounts.mat,
+                             colData = meta.df,
+                             design = ~ 1)
+dds <- estimateSizeFactors(dds)
+normalized_counts <- counts(dds, normalized = T)
+
+getRPKMSummary = function(counts) {
+  rpm = apply(counts, MARGIN=2, FUN=function(x) x / sum(x)) * 1e6
+  rpkm.mat = apply(rpm * 1e3, MARGIN=2, FUN=function(x) x / gene.meta$length)
+  rpkm.df = cbind(data.frame(gene_id = rownames(rpkm.mat)), rpkm.mat)
+  data.frame(gene_id = rownames(rpkm.mat),
+             median.rpkm = rowMedians(rpkm.mat),
+             mean.rpkm = rowMeans(rpkm.mat),
+             sd.rpkm = rowSds(rpkm.mat))
+}
+
+ipsc.rpkm.avgs.df = getRPKMSummary(normalized_counts[, meta.ipsc.df$sample_name])
+mg.rpkm.avgs.df = getRPKMSummary(normalized_counts[, mg_samples])
+
+expressedGenes.ipsc = ipsc.rpkm.avgs.df %>% filter(mean.rpkm >= 1) %>% .$gene_id
+expressedGenes.mg = mg.rpkm.avgs.df %>% filter(mean.rpkm >= 1) %>% .$gene_id
+```
+
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+dds.ipsc = DESeqDataSetFromMatrix(countData = rawcounts.mat[, meta.ipsc.df$sample_name],
+                                  colData = meta.ipsc.df,
+                                  design = ~ condition)
+
+dds.ipsc <- estimateSizeFactors(dds.ipsc)
+dds.ipsc <- DESeq(dds.ipsc)
+normalized_counts.ipsc <- counts(dds.ipsc, normalized = T)
+vsd.ipsc <- vst(dds.ipsc, blind=T)
+```
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+# Do the DE tests for all comparisons (HDR_HOM vs WT, HET vs WT, etc.)
+ipsc.hom_hdr.res <- results(dds.ipsc, contrast = c("condition", "HDR_HOM", "WT"), alpha = 0.05)
+ipsc.hom_hdr.res <- lfcShrink(dds.ipsc, contrast =  c("condition", "HDR_HOM", "WT"), res = ipsc.hom_hdr.res)
+
+# Add annotations to all genes
+grch38_dedup = grch38 %>% select(-entrez) %>% filter(!duplicated(ensgene))
+ipsc.hom_hdr.res.df = data.frame(ipsc.hom_hdr.res) %>%
+  rownames_to_column(var = "gene_id") %>%
+  arrange(padj) %>% filter(!duplicated(gene_id)) %>%
+  left_join(grch38_dedup %>% select(ensgene, symbol, biotype, description), by=c("gene_id" = "ensgene"))
+
+####### iPSC HOM vs WT comparison, excluding clone H11
+meta.ipsc.exclH11.df = meta.df %>% filter(cell_type == "ipsc", clone != "H11")
+rownames(meta.ipsc.exclH11.df) = meta.ipsc.exclH11.df$sample_name
+dds.ipsc.exclH11 = DESeqDataSetFromMatrix(countData = rawcounts.mat[, meta.ipsc.exclH11.df$sample_name],
+                                  colData = meta.ipsc.exclH11.df,
+                                  design = ~ condition)
+vsd.ipsc.exclH11 <- vst(dds.ipsc.exclH11, blind=T)
+
+dds.ipsc.exclH11 <- DESeq(dds.ipsc.exclH11)
+ipsc.hom_hdr.exclH11.res <- results(dds.ipsc.exclH11, contrast = c("condition", "HDR_HOM", "WT"), alpha = 0.05)
+ipsc.hom_hdr.exclH11.res <- lfcShrink(dds.ipsc.exclH11, contrast =  c("condition", "HDR_HOM", "WT"), res = ipsc.hom_hdr.exclH11.res)
+ipsc.hom_hdr.exclH11.res.df = data.frame(ipsc.hom_hdr.exclH11.res) %>%
+  rownames_to_column(var = "gene_id") %>%
+  arrange(padj) %>% filter(!duplicated(gene_id)) %>%
+  left_join(grch38_dedup %>% select(ensgene, symbol, biotype, description), by=c("gene_id" = "ensgene"))
+
+####### iPSC HET_HDR vs WT comparison
+ipsc.het_hdr.res <- results(dds.ipsc, contrast = c("condition", "HDR_HET", "WT"), alpha = 0.05)
+ipsc.het_hdr.res <- lfcShrink(dds.ipsc, contrast =  c("condition", "HDR_HET", "WT"), res = ipsc.het_hdr.res)
+
+ipsc.het_hdr.res.df = data.frame(ipsc.het_hdr.res) %>%
+  rownames_to_column(var = "gene_id") %>%
+  arrange(padj) %>% filter(!duplicated(gene_id)) %>%
+  left_join(grch38_dedup %>% select(ensgene, symbol, biotype, description), by=c("gene_id" = "ensgene"))
+
+####### iPSC KO vs WT comparison
+ipsc.ko.res <- results(dds.ipsc, contrast = c("condition", "KO", "WT"), alpha = 0.05)
+ipsc.ko.res <- lfcShrink(dds.ipsc, contrast =  c("condition", "KO", "WT"), res = ipsc.ko.res)
+ipsc.ko.res.df = data.frame(ipsc.ko.res) %>%
+  rownames_to_column(var = "gene_id") %>%
+  arrange(padj) %>% filter(!duplicated(gene_id)) %>%
+  left_join(grch38_dedup %>% select(ensgene, symbol, biotype, description), by=c("gene_id" = "ensgene"))
+
+####### Microglia HDR vs WT comparison
+meta.mg.exclH11.df = meta.df %>% filter(cell_type == "microglia", clone != "H11")
+rownames(meta.mg.exclH11.df) = meta.mg.exclH11.df$sample_name
+dds.mg.exclH11 = DESeqDataSetFromMatrix(countData = rawcounts.mat[, meta.mg.exclH11.df$sample_name],
+                                  colData = meta.mg.exclH11.df,
+                                  design = ~ condition)
+
+dds.mg.exclH11 <- estimateSizeFactors(dds.mg.exclH11)
+vsd.mg.exclH11 <- vst(dds.mg.exclH11, blind=T)
+dds.mg.exclH11 <- DESeq(dds.mg.exclH11)
+
+mg.res <- results(dds.mg.exclH11, contrast = c("condition", "HDR_HOM", "WT"), alpha = 0.05)
+mg.res <- lfcShrink(dds.mg.exclH11, contrast =  c("condition", "HDR_HOM", "WT"), res = mg.res)
+
+mg.res.df = data.frame(mg.res) %>%
+  rownames_to_column(var = "gene_id") %>%
+  arrange(padj) %>% filter(!duplicated(gene_id)) %>%
+  left_join(grch38_dedup %>% select(ensgene, symbol, biotype, description), by=c("gene_id" = "ensgene"))
+```
+
+## More comprehensive PCA plots
+
+### iPSC samples
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+pca.result = pcaMethods::pca(t(assay(vsd.ipsc)[expressedGenes.ipsc, ]), nPcs = 5)
+pcs = data.frame(scores(pca.result))
+pcs$sample_name = rownames(pcs)
+pcs.meta = dplyr::left_join(pcs, meta.ipsc.df, by="sample_name")
+
+PCnames = factor(names(pca.result@R2), levels=c("PC1", "PC2", "PC3", "PC4", "PC5"))
+ggplot(data.frame(R2=pca.result@R2, PC=PCnames), aes(x=PC, y=R2)) +
+  geom_bar(stat="identity") + ggtitle("Variance explained by RNA-seq PCs") + theme_bw()
+
+ggplot(pcs.meta, aes(x=PC1, y=PC2, col=condition)) + geom_point(alpha=0.7) + geom_text(aes(label = clone), size=3, hjust=1, nudge_x=-0.5) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC1, y=PC3, col=condition)) + geom_point(alpha=0.7) + geom_text(aes(label = clone), size=3, hjust=1, nudge_x=-0.5) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC2, y=PC3, col=condition)) + geom_point(alpha=0.7) + geom_text(aes(label = clone), size=3, hjust=1, nudge_x=-0.5) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC2, y=PC4, col=condition)) + geom_point(alpha=0.7) + geom_text(aes(label = clone), size=3, hjust=1, nudge_x=-0.5) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC3, y=PC4, col=condition)) + geom_point(alpha=0.7) + geom_text(aes(label = clone), size=3, hjust=1, nudge_x=-0.5) + theme_bw(12)
+```
+
+### iPSC samples excluding H11
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+pca.result = pcaMethods::pca(t(assay(vsd.ipsc.exclH11)[expressedGenes.ipsc, ]), nPcs = 5)
+pcs = data.frame(scores(pca.result))
+pcs$sample_name = rownames(pcs)
+pcs.meta = dplyr::left_join(pcs, meta.ipsc.df, by="sample_name")
+
+PCnames = factor(names(pca.result@R2), levels=c("PC1", "PC2", "PC3", "PC4", "PC5"))
+ggplot(data.frame(R2=pca.result@R2, PC=PCnames), aes(x=PC, y=R2)) +
+  geom_bar(stat="identity") + ggtitle("Variance explained by RNA-seq PCs") + theme_bw()
+
+ggplot(pcs.meta, aes(x=PC1, y=PC2, col=condition)) + geom_point(alpha=0.7) + geom_text(aes(label = clone), size=3, hjust=1, nudge_x=-0.5) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC1, y=PC3, col=condition)) + geom_point(alpha=0.7) + geom_text(aes(label = clone), size=3, hjust=1, nudge_x=-0.5) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC2, y=PC3, col=condition)) + geom_point(alpha=0.7) + geom_text(aes(label = clone), size=3, hjust=1, nudge_x=-0.5) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC2, y=PC4, col=condition)) + geom_point(alpha=0.7) + geom_text(aes(label = clone), size=3, hjust=1, nudge_x=-0.5) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC3, y=PC4, col=condition)) + geom_point(alpha=0.7) + geom_text(aes(label = clone), size=3, hjust=1, nudge_x=-0.5) + theme_bw(12)
+```
+
+### iPSC enrichments for PCs
+
+PC2 appears to separate the two WT iPSC lines edited for other SNP projects (but which are WT).
+
+Let's look at enrichments for the loadings of PC2 when iPSC sample H11 is excluded.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+pca = prcomp(t(assay(vsd.ipsc.exclH11)[expressedGenes.ipsc, ]))
+
+# Plot showing GO categories enriched in PC1
+gs_pca = gosummaries(pca, components=1:3)
+plot(gs_pca, components = 1:2, fontsize = 10)
+
+# Plot showing genes
+gs_pca = gosummaries(pca, show_genes = T, n_genes = 40, components=1:2)
+plot(gs_pca, components = 1:2, fontsize = 10)
+```
+
+This doesn't illuminate all that much, and it's not clear to me why two samples might differ in pathways related to "response to drug" or "head development".
+
+
+### Microglia samples excluding H11
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+pca.result = pcaMethods::pca(t(assay(vsd.mg.exclH11)[expressedGenes.mg, ]), nPcs = 5)
+pcs = data.frame(scores(pca.result))
+pcs$sample_name = rownames(pcs)
+pcs.meta = dplyr::left_join(pcs, meta.mg.df, by="sample_name")
+
+PCnames = factor(names(pca.result@R2), levels=c("PC1", "PC2", "PC3", "PC4", "PC5"))
+ggplot(data.frame(R2=pca.result@R2, PC=PCnames), aes(x=PC, y=R2)) +
+  geom_bar(stat="identity") + ggtitle("Variance explained by RNA-seq PCs") + theme_bw()
+
+ggplot(pcs.meta, aes(x=PC1, y=PC2, col=condition)) + geom_point(alpha=0.7) + geom_text(aes(label = clone), size=3, hjust=1, nudge_x=-0.5) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC1, y=PC3, col=condition)) + geom_point(alpha=0.7) + geom_text(aes(label = clone), size=3, hjust=1, nudge_x=-0.5) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC2, y=PC3, col=condition)) + geom_point(alpha=0.7) + geom_text(aes(label = clone), size=3, hjust=1, nudge_x=-0.5) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC2, y=PC4, col=condition)) + geom_point(alpha=0.7) + geom_text(aes(label = clone), size=3, hjust=1, nudge_x=-0.5) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC3, y=PC4, col=condition)) + geom_point(alpha=0.7) + geom_text(aes(label = clone), size=3, hjust=1, nudge_x=-0.5) + theme_bw(12)
+```
+
+### Microglia enrichments for PCs
+
+PC2 again appears to separate the WT from the edited lines.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+pca = prcomp(t(assay(vsd.mg.exclH11)[expressedGenes.mg, ]))
+
+# Plot showing GO categories enriched in PC1
+gs_pca = gosummaries(pca, components=1:3)
+plot(gs_pca, components = 1:2, fontsize = 10)
+
+# Plot showing genes
+gs_pca = gosummaries(pca, show_genes = T, n_genes = 40, components=1:3)
+plot(gs_pca, components = 1:2, fontsize = 10)
+```
+
+
+## DE Genes near CCDC6
+
+Check whether genes in the +/- 1 Mb neighbourhood of CCDC6 are differentially expressed.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+getDEGenesNearCCDC6 = function(de.res.df, distThreshold = 1e6) {
+  ccdc6 = grch38_dedup %>% filter(symbol == "CCDC6")
+  nearby_genes = grch38_dedup %>%
+    filter(chr == ccdc6$chr) %>%
+    group_by(ensgene) %>%
+    mutate(minDist = min(abs(start - ccdc6$start),
+                         abs(start - ccdc6$end),
+                         abs(end - ccdc6$start),
+                         abs(end - ccdc6$end))) %>%
+    filter(minDist < distThreshold)
+  de.res.df %>% inner_join(nearby_genes %>% select(gene_id = ensgene, start, end, minDist), by="gene_id")
+}
+```
+
+### iPSC HOM HDR (excl H11) vs WT - genes near CCDC6:
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+ipsc.hom_hdr.exclH11.near_ccdc6.df = getDEGenesNearCCDC6(ipsc.hom_hdr.res.df) %>%
+  left_join(getRPKMSummary(normalized_counts[, meta.ipsc.exclH11.df$sample_name]), by="gene_id") %>%
+  arrange(padj) %>%
+  filter(!is.na(padj))
+
+nr = min(nrow(ipsc.hom_hdr.exclH11.near_ccdc6.df), 10)
+print(ipsc.hom_hdr.exclH11.near_ccdc6.df %>%
+        filter(!is.na(padj)) %>%
+        select(gene_id, symbol, biotype, padj, log2FoldChange, mean.rpkm, start, end) %>%
+        as.data.frame() %>% .[1:nr,])
+```
+
+### iPSC Het HDR vs WT - genes near CCDC6:
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+ipsc.het_hdr.near_ccdc6.df = getDEGenesNearCCDC6(ipsc.het_hdr.res.df) %>%
+  left_join(getRPKMSummary(normalized_counts[, meta.ipsc.exclH11.df$sample_name]), by="gene_id") %>%
+  arrange(padj) %>%
+  filter(!is.na(padj))
+
+nr = min(nrow(ipsc.het_hdr.near_ccdc6.df), 10)
+print(ipsc.het_hdr.near_ccdc6.df %>%
+        filter(!is.na(padj)) %>%
+        select(gene_id, symbol, biotype, padj, log2FoldChange, mean.rpkm, start, end) %>%
+        as.data.frame() %>% .[1:nr,])
+```
+
+
+### iPSC KO vs WT - genes near CCDC6:
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+ipsc.ko.near_ccdc6.df = getDEGenesNearCCDC6(ipsc.ko.res.df) %>%
+  left_join(getRPKMSummary(normalized_counts[, meta.ipsc.exclH11.df$sample_name]), by="gene_id") %>%
+  arrange(padj) %>%
+  filter(!is.na(padj))
+
+nr = min(nrow(ipsc.ko.near_ccdc6.df), 10)
+print(ipsc.ko.near_ccdc6.df %>%
+        filter(!is.na(padj)) %>%
+        select(gene_id, symbol, biotype, padj, log2FoldChange, mean.rpkm, start, end) %>%
+        as.data.frame() %>% .[1:nr,])
+```
+
+### Microglia HDR vs WT - genes near CCDC6:
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+mg.hom_hdr.near_ccdc6.df = getDEGenesNearCCDC6(mg.res.df) %>%
+  left_join(getRPKMSummary(normalized_counts[, meta.mg.exclH11.df$sample_name]), by="gene_id") %>%
+  arrange(padj) %>%
+  filter(!is.na(padj))
+
+nr = min(nrow(mg.hom_hdr.near_ccdc6.df), 10)
+print(mg.hom_hdr.near_ccdc6.df %>%
+        filter(!is.na(padj)) %>%
+        select(gene_id, symbol, biotype, padj, log2FoldChange, mean.rpkm, start, end) %>%
+        as.data.frame() %>% .[1:nr,])
+```
+
+
+## Enrichments for shared DE genes
+
+Find overlap between the DE genes in iPSC HOM_HDR vs WT, iPSC HET_HDR vs WT, and iPSC KO vs WT.
+
+### DE gene overlap between iPSC HOM_HDR excl H11 vs WT and iPSC HET_HDR vs WT
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+ipsc.hdr.df = ipsc.hom_hdr.exclH11.res.df %>%
+  full_join(ipsc.het_hdr.res.df %>% select(-symbol, -biotype, -description), by="gene_id")
+
+ipsc.hdr.sig.df = ipsc.hdr.df %>%
+  filter(padj.x < 0.05 | padj.y < 0.05) %>%
+  na.omit() %>%
+  mutate(sig = ifelse(padj.x < 0.05, ifelse(padj.y < 0.05, "both", "HomHDR"), ifelse(padj.y < 0.05, "HetHDR", "Error")))
+
+ipsc.hdr.sig.df %>%
+  mutate(label = ifelse(padj.x < 0.001 & padj.y < 0.001, symbol, NA)) %>%
+  ggplot(aes(x=-log10(padj.x), y=-log10(padj.y), color=sig)) +
+    geom_point(alpha=0.4) + theme_bw() +
+    geom_text(aes(label=label), size=2.6, hjust=0, color="grey30") +
+    xlim(0, 10) + ylim(0, 10) +
+    xlab("-log10(p) Hom HDR excl H11") + ylab("-log10(p) Het HDR")
+
+ipsc.hdr.df = ipsc.hdr.df %>% left_join(getRPKMSummary(normalized_counts[, meta.ipsc.df$sample_name]), by="gene_id")
+ipsc.expressed = ipsc.hdr.df %>% arrange(-mean.rpkm) %>% filter(mean.rpkm > 0.5) %>% dplyr::select(gene_id)
+ipsc.hdr.pathwayEnrich = ipsc.hdr.df %>%
+  filter(padj.x < 0.05 & padj.y < 0.05, mean.rpkm > 0.5, sign(log2FoldChange.x) == sign(log2FoldChange.y)) %>%
+  dplyr::select(gene_id, log2FoldChange.x, log2FoldChange.y, padj.x, symbol) %>%
+  arrange(-log2FoldChange.x)
+
+if (saveFiles) {
+  ipsc.hdr.sig_both.df = ipsc.hdr.sig.df %>% filter(padj.x < 0.05, padj.y < 0.05)
+  ipsc.hdr.sig_both.df %>%
+    select(gene_id, symbol, padj.HomHDR=padj.x, padj.HetHDR=padj.y, log2FC.HomHDR=log2FoldChange.x, log2FC.HetHDR=log2FoldChange.y, description) %>%
+    write.table(file=file.path(outputPath, "HomHDR_exclH11_HetHDR_DE_gene_overlap.tsv"), sep="\t", quote=F, row.names=F, col.names=T)
+  
+  write.table(ipsc.hdr.pathwayEnrich, file.path(outputPath, "deseq.ipsc.homHDR_hetHDR_overlap.forPathwayEnrichment.tsv"), col.names=F, row.names=F, quote=F, sep="\t")
+  write.table(ipsc.expressed, file.path(outputPath, "deseq.ipsc.expressedGenes.tsv"), col.names=F, row.names=F, quote=F, sep="\t")
+  
+  # Use gProfileR to get enrichments
+  gp.up = gprofiler(query = (ipsc.hdr.pathwayEnrich %>% filter(log2FoldChange.x > 0) %>% arrange(padj.x) %>% filter(between(row_number(), 1, 1000)) %>% .$gene_id),
+                    custom_bg = (ipsc.expressed %>% .$gene_id), organism = "hsapiens")
+  gp.down = gprofiler(query = (ipsc.hdr.pathwayEnrich %>% filter(log2FoldChange.x < 0) %>% arrange(padj.x) %>% filter(between(row_number(), 1, 1000)) %>% .$gene_id),
+                      custom_bg = (ipsc.expressed %>% .$gene_id), organism = "hsapiens")
+  write.table(gp.up %>% filter(domain != "tf") %>% arrange(domain, p.value), file.path(outputPath, "deseq.ipsc.homHDR_hetHDR_overlap.upregulated_genes.gprofiler_enrich.tsv"), col.names=T, row.names=F, quote=F, sep="\t")
+  write.table(gp.down %>% filter(domain != "tf") %>% arrange(domain, p.value), file.path(outputPath, "deseq.ipsc.homHDR_hetHDR_overlap.downregulated_genes.gprofiler_enrich.tsv"), col.names=T, row.names=F, quote=F, sep="\t")
+}
+```
+
+There are 339 DE genes overlapping, out of 1082 DE genes in iPSC HOM_HDR excl H11 vs WT, and 2153 DE genes in iPSC HET_HDR vs WT.
+
+There are a few over-represented pathways, saved in an Excel spreadsheet, such as:
+
+* Apoptosis
+* MAPK signaling pathway
+* Non-alcoholic fatty liver disease
+* RNA polymerase II regulatory region DNA binding
+* core promoter proximal region DNA binding
+
+
+### DE gene overlap between iPSC KO and *either* HOM_HDR excl H11 vs WT or iPSC HET_HDR vs WT.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+ipsc.hdr.either.df = ipsc.hom_hdr.exclH11.res.df %>%
+  select(gene_id, log2FoldChange.homHDR=log2FoldChange, padj.homHDR=padj) %>%
+  full_join(ipsc.het_hdr.res.df %>% select(gene_id, log2FoldChange.hetHDR=log2FoldChange, padj.hetHDR=padj), by="gene_id") %>%
+  filter(padj.homHDR < 0.05 | padj.hetHDR < 0.05)
+
+ipsc.ko.overlap.df = ipsc.ko.res.df %>%
+  left_join(ipsc.hdr.either.df, by="gene_id") %>%
+  filter(padj.homHDR < 0.05 | padj.hetHDR < 0.05, !is.na(padj)) %>%
+  mutate(sig = ifelse(padj < 0.05, ifelse(padj.homHDR < 0.05, "both", "KO"), ifelse(padj.homHDR < 0.05, "HomHDR", "Error")))
+
+# plot log10 p values for KO vs. HomHDR
+ipsc.ko.overlap.df %>%
+  filter(padj < 0.05 | padj.homHDR < 0.05) %>%
+  mutate(label = ifelse((padj < 0.005 & padj.homHDR < 0.005) | padj.homHDR < 1e-5 | padj < 1e-5, symbol, NA)) %>%
+  ggplot(aes(x=-log10(padj), y=-log10(padj.homHDR), col=sig)) +
+    geom_point(alpha=0.4) + theme_bw() +
+    geom_text(aes(label=label), size=2.6, hjust=0, color="grey30") +
+    xlim(0, 10) + ylim(0, 10) +
+    xlab("-log10(p) KO") + ylab("-log10(p) Hom HDR excl H11")
+
+# plot log10 p values for KO vs. HetHDR
+ipsc.ko.overlap.df = ipsc.ko.res.df %>%
+  left_join(ipsc.hdr.either.df, by="gene_id") %>%
+  filter(padj.homHDR < 0.05 | padj.hetHDR < 0.05, !is.na(padj)) %>%
+  mutate(sig = ifelse(padj < 0.05, ifelse(padj.hetHDR < 0.05, "both", "KO"), ifelse(padj.hetHDR < 0.05, "HetHDR", "Error")))
+
+ipsc.ko.overlap.df %>%
+  filter(padj < 0.05 | padj.hetHDR < 0.05) %>%
+  mutate(label = ifelse((padj < 0.005 & padj.hetHDR < 0.005) | padj.hetHDR < 1e-6 | padj < 1e-5, symbol, NA)) %>%
+  ggplot(aes(x=-log10(padj), y=-log10(padj.hetHDR), col=sig)) +
+    geom_point(alpha=0.4) + theme_bw() +
+    geom_text(aes(label=label), size=2.6, hjust=0, color="grey30") +
+    xlim(0, 10) + ylim(0, 10) +
+    xlab("-log10(p) KO") + ylab("-log10(p) Het HDR")
+
+
+ipsc.ko.overlap.sig.df = ipsc.ko.overlap.df %>% filter(padj < 0.05)
+if (saveFiles) {
+  ipsc.ko.overlap.sig.df %>%
+    select(gene_id, symbol, padj, log2FoldChange, padj.homHDR, padj.hetHDR, log2FoldChange.homHDR, log2FoldChange.hetHDR, description) %>%
+    write.table(file=file.path(outputPath, "iPSC_KO_DE_gene_overlap_either_HomHDR_or_HetHDR.tsv"), sep="\t", quote=F, row.names=F, col.names=T)
+}
+
+ipsc.ko.overlap.df = ipsc.ko.overlap.df %>% left_join(getRPKMSummary(normalized_counts[, meta.ipsc.df$sample_name]), by="gene_id")
+ipsc.expressed = ipsc.hdr.df %>% arrange(-mean.rpkm) %>% filter(mean.rpkm > 0.5) %>% dplyr::select(gene_id)
+ipsc.ko.pathwayEnrich = ipsc.ko.overlap.df %>%
+  filter(mean.rpkm > 0.5) %>%
+  dplyr::select(gene_id, log2FoldChange, log2FoldChange.homHDR, log2FoldChange.hetHDR, padj, symbol) %>%
+  arrange(-log2FoldChange)
+
+if (saveFiles) {
+  write.table(ipsc.ko.pathwayEnrich, file.path(outputPath, "deseq.ipsc.KO_hom_or_hetHDR_overlap.forPathwayEnrichment.tsv"), col.names=F, row.names=F, quote=F, sep="\t")
+  #write.table(ipsc.expressed, file.path(outputPath, "deseq.ipsc.expressedGenes.tsv"), col.names=F, row.names=F, quote=F, sep="\t")
+  
+  # Use gProfileR to get enrichments
+  gp.up = gprofiler(query = (ipsc.ko.pathwayEnrich %>% filter(log2FoldChange > 0) %>% arrange(padj) %>% filter(between(row_number(), 1, 1000)) %>% .$gene_id),
+                    custom_bg = (ipsc.expressed %>% .$gene_id), organism = "hsapiens")
+  gp.down = gprofiler(query = (ipsc.ko.pathwayEnrich %>% filter(log2FoldChange < 0) %>% arrange(padj) %>% filter(between(row_number(), 1, 1000)) %>% .$gene_id),
+                      custom_bg = (ipsc.expressed %>% .$gene_id), organism = "hsapiens")
+  write.table(gp.up %>% filter(domain != "tf") %>% arrange(domain, p.value), file.path(outputPath, "deseq.ipsc.KO_hom_or_hetHDR_overlap.upregulated_genes.gprofiler_enrich.tsv"), col.names=T, row.names=F, quote=F, sep="\t")
+  write.table(gp.down %>% filter(domain != "tf") %>% arrange(domain, p.value), file.path(outputPath, "deseq.ipsc.KO_hom_or_hetHDR_overlap.downregulated_genes.gprofiler_enrich.tsv"), col.names=T, row.names=F, quote=F, sep="\t")
+}
+```
+
+There are 244 DE genes in the KO comparison which overlap with a significant (FDR 5%) DE gene in *either* HOM_HDR excl H11 vs. WT or HET_HDR vs WT.
+
+There are few over-represented pathways, saved in an Excel spreadsheet:
+
+* Influenza A
+* RNA polymerase II regulatory region DNA binding
+
+### DE gene direction in KO vs. HDR
+
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+ipsc.ko.overlap.df = ipsc.ko.res.df %>% 
+  left_join(ipsc.hom_hdr.exclH11.res.df %>% select(gene_id, log2FoldChange.homHDR=log2FoldChange, padj.homHDR=padj), by="gene_id") %>%
+  filter(!is.na(padj) & !is.na(padj.homHDR)) %>%
+  mutate(sig = ifelse(padj < 0.05, ifelse(padj.homHDR < 0.05, "both", "KO"), ifelse(padj.homHDR < 0.05, "HomHDR", "Neither")))
+
+ipsc.ko.overlap.sig.df = ipsc.ko.overlap.df %>% filter(padj < 0.05 | padj.homHDR < 0.05)
+ipsc.ko.overlap.sig.df = ipsc.ko.overlap.sig.df %>%
+  mutate(label = ifelse(abs(log2FoldChange) > 1 | abs(log2FoldChange.homHDR) > 1, symbol, NA))
+
+ggplot(mapping = aes(x=log2FoldChange, y=log2FoldChange.homHDR)) +
+  geom_point(data=ipsc.ko.overlap.df %>% filter(sig == "Neither"), color = "grey30", alpha=0.25) +
+  geom_point(data=ipsc.ko.overlap.sig.df, aes(col=sig), alpha=0.5) +
+  geom_text(data=ipsc.ko.overlap.sig.df, aes(label=label), size=2.6, hjust=0, color="grey30") +
+  theme_bw() +
+  xlab("log2FC KO vs WT") + ylab("log2FC Hom HDR excl H11 vs WT")
+```
+
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+ipsc.ko.overlap.df = ipsc.ko.res.df %>% 
+  left_join(ipsc.het_hdr.res.df %>% select(gene_id, log2FoldChange.hetHDR=log2FoldChange, padj.hetHDR=padj), by="gene_id") %>%
+  filter(!is.na(padj) & !is.na(padj.hetHDR)) %>%
+  mutate(sig = ifelse(padj < 0.05, ifelse(padj.hetHDR < 0.05, "both", "KO"), ifelse(padj.hetHDR < 0.05, "HetHDR", "Neither")))
+
+ipsc.ko.overlap.sig.df = ipsc.ko.overlap.df %>% filter(padj < 0.05 | padj.hetHDR < 0.05)
+ipsc.ko.overlap.sig.df = ipsc.ko.overlap.sig.df %>%
+  mutate(label = ifelse(abs(log2FoldChange) > 1 | abs(log2FoldChange.hetHDR) > 1, symbol, NA))
+
+ggplot(mapping = aes(x=log2FoldChange, y=log2FoldChange.hetHDR)) +
+  geom_point(data=ipsc.ko.overlap.df %>% filter(sig == "Neither"), color = "grey30", alpha=0.25) +
+  geom_point(data=ipsc.ko.overlap.sig.df, aes(col=sig), alpha=0.5) +
+  geom_text(data=ipsc.ko.overlap.sig.df, aes(label=label), size=2.6, hjust=0, color="grey30") +
+  theme_bw() +
+  xlab("log2FC KO vs WT") + ylab("log2FC Het HDR vs WT")
+```
+
+We see positive correlation between the fold changes for DE genes in KO vs. WT and HomHDR vs WT, and the same when comparing to HetHDR vs. WT. My interpretation of this is that the DE genes mainly relate to ways in which the WT samples happen to differ from the other samples, probably "by chance". And by "chance" I mean the something about the cell culture of 2 of the WT samples was subtly different, and accounts for the majority of the differential expression observed.
