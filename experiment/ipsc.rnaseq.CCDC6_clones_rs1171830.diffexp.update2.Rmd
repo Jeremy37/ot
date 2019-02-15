@@ -478,11 +478,14 @@ ipsc.ko.overlap.df = ipsc.ko.res.df %>%
 ipsc.ko.overlap.sig.df = ipsc.ko.overlap.df %>% filter(padj < 0.05 | padj.homHDR < 0.05)
 ipsc.ko.overlap.sig.df = ipsc.ko.overlap.sig.df %>%
   mutate(label = ifelse(abs(log2FoldChange) > 1 | abs(log2FoldChange.homHDR) > 1, symbol, NA))
+ccdc6.tmp.df = ipsc.ko.overlap.df %>% filter(symbol == "CCDC6") %>% mutate(label=symbol)
 
 ggplot(mapping = aes(x=log2FoldChange, y=log2FoldChange.homHDR)) +
   geom_point(data=ipsc.ko.overlap.df %>% filter(sig == "Neither"), color = "grey30", alpha=0.25) +
   geom_point(data=ipsc.ko.overlap.sig.df, aes(col=sig), alpha=0.5) +
   geom_text(data=ipsc.ko.overlap.sig.df, aes(label=label), size=2.6, hjust=0, color="grey30") +
+  geom_point(data=ccdc6.tmp.df, color = "blue", alpha=1, size=3) +
+  geom_text(data=ccdc6.tmp.df, aes(label=label), size=3.8, hjust=1, nudge_x = -0.07, color="blue") +
   theme_bw() +
   xlab("log2FC KO vs WT") + ylab("log2FC Hom HDR excl H11 vs WT")
 ```
@@ -497,11 +500,14 @@ ipsc.ko.overlap.df = ipsc.ko.res.df %>%
 ipsc.ko.overlap.sig.df = ipsc.ko.overlap.df %>% filter(padj < 0.05 | padj.hetHDR < 0.05)
 ipsc.ko.overlap.sig.df = ipsc.ko.overlap.sig.df %>%
   mutate(label = ifelse(abs(log2FoldChange) > 1 | abs(log2FoldChange.hetHDR) > 1, symbol, NA))
+ccdc6.tmp.df = ipsc.ko.overlap.df %>% filter(symbol == "CCDC6") %>% mutate(label=symbol)
 
 ggplot(mapping = aes(x=log2FoldChange, y=log2FoldChange.hetHDR)) +
   geom_point(data=ipsc.ko.overlap.df %>% filter(sig == "Neither"), color = "grey30", alpha=0.25) +
   geom_point(data=ipsc.ko.overlap.sig.df, aes(col=sig), alpha=0.5) +
   geom_text(data=ipsc.ko.overlap.sig.df, aes(label=label), size=2.6, hjust=0, color="grey30") +
+  geom_point(data=ccdc6.tmp.df, color = "blue", alpha=1, size=3) +
+  geom_text(data=ccdc6.tmp.df, aes(label=label), size=3.8, hjust=1, nudge_x = -0.07, color="blue") +
   theme_bw() +
   xlab("log2FC KO vs WT") + ylab("log2FC Het HDR vs WT")
 ```
