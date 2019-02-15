@@ -13,12 +13,15 @@ suppressMessages(library(aod)) # for betabin
 suppressMessages(library(ggdendro))
 suppressMessages(library(variancePartition))
 suppressMessages(library(doParallel))
+suppressMessages(library(isofor))
+suppressMessages(library(FNN))
+
 cl <- makeCluster(4)
 registerDoParallel(cl)
 #library(profvis)
 options(stringsAsFactors = F)
 
-opt = NULL
+#opt = NULL
 
 runGenIE = function(option_list)
 {
@@ -183,18 +186,35 @@ runGenIE = function(option_list)
     annotation_custom(tableGrob(settings.df, theme = myTableTheme), xmin=1, xmax=9, ymin=1, ymax=9) +
     ggtitle("CRISPR editing analysis settings")
   
-  p.variance_components = NULL
+  varcomp_plots = NULL
   if (opt$variance_analysis) {
+    varcomp_plots = list()
     # Do variance components analysis across all regions together
     all_replicates.udp.df = bind_rows(lapply(all_results, FUN = function(res) getListItemField(res, c("replicate.udp.df"))))
-    if (length(unique(all_replicates.udp.df$name)) > 1) {
-      p.variance_components = getVarianceComponentsPlots(replicate.udp.df = all_replicates.udp.df,
-                                                         replicates.df = replicates.df %>% dplyr::filter(name %in% regions.df$name),
-                                                         method = "read_fraction",
-                                                         min_udp_total_count = opt$variance_analysis_min_count,
-                                                         min_udp_fraction = opt$variance_analysis_min_fraction,
-                                                         plot_title = "Variance components across regions")
-    }
+    #if (length(unique(all_replicates.udp.df$name)) > 1) {
+      varcomp = getVarianceComponents(replicate.udp.df = all_replicates.udp.df,
+                                      replicates.df = replicates.df %>% dplyr::filter(name %in% regions.df$name),
+                                      method = "read_fraction",
+                                      min_udp_total_count = opt$variance_analysis_min_count,
+                                      min_udp_fraction = opt$variance_analysis_min_fraction)
+      varcomp_plots[[1]] = getVarianceComponentsPlots(varcomp$vp.cDNA, varcomp$vp.gDNA, plot_title = "Variance components across regions")
+      fname = sprintf("%s.variance_components.tsv", opt$out)
+      vp.df = rbind(varcomp$vp.cDNA %>% mutate(type = "cDNA"), varcomp$vp.gDNA %>% mutate(type = "gDNA")) %>%
+        select(name, udp, type, everything()) %>%
+        arrange(name, udp, -frac)
+      write.table(vp.df, fname, quote=F, row.names=F, col.names=T, sep="\t")
+      
+      # Get variance components for subsets of UDPs defined by their read fraction
+      varcomp_plots[[2]] = getVarianceComponentsPlots(varcomp$vp.cDNA %>% filter(frac < 0.005),
+                                                      varcomp$vp.gDNA %>% filter(frac < 0.005),
+                                                      plot_title = "Variance components across regions: fraction < 0.5%")
+      varcomp_plots[[3]] = getVarianceComponentsPlots(varcomp$vp.cDNA %>% filter(frac >= 0.005, frac < 0.02),
+                                                      varcomp$vp.gDNA %>% filter(frac >= 0.005, frac < 0.02),
+                                                      plot_title = "Variance components across regions: fraction 0.5% - 2%")
+      varcomp_plots[[4]] = getVarianceComponentsPlots(varcomp$vp.cDNA %>% filter(frac >= 0.02),
+                                                      varcomp$vp.gDNA %>% filter(frac >= 0.02),
+                                                      plot_title = "Variance components across regions: fraction > 2%")
+    #}
   }
   
   
@@ -203,7 +223,7 @@ runGenIE = function(option_list)
   print(settingsPlot)
   if (!is.null(stats_plot)) { print(stats_plot) }
   print(all_region_plots)
-  if (!is.null(p.variance_components)) { print(p.variance_components) }
+  if (!is.null(varcomp_plots)) { print(varcomp_plots) }
   dev.off()
 }
 
@@ -398,16 +418,15 @@ doFullDeletionAnalysis = function(region, replicates.df, read_data = NULL)
                                  p.merged_del_profile, p.replicate_del_profile, 
                                  ncol=1, heights=c(0.1, 0.5, 0.5), draw = F)
   
-  p.replicate_qc.1 = NULL
-  p.replicate_qc.2 = NULL
+  replicate_qc_plots = list(p1 = NULL, p2 = NULL)
   if (opt$replicate_qc_plots) {
-    # Replicate QC using basic stats
-    p.replicate_qc.1 = getReplicateStatsPlot(stats_res$stats.df, region_title = region$name)
-    
-    # Replicate QC plot
-    p.replicate_qc.2 = getReplicateQCPlot(replicate.udp.df, region_title = region$name,
-                                          max_udps = opt$qc_plot_max_udps, min_avg_udp_fraction = opt$qc_plot_min_udp_fraction,
-                                          exclude_wt = opt$qc_plot_exclude_wt)
+    qc_metrics = getReplicateQCMetrics(stats.df = stats_res$stats.df, replicate.udp.df = replicate.udp.df,
+                                       max_udps = opt$qc_plot_max_udps, min_avg_udp_fraction = opt$qc_plot_min_udp_fraction,
+                                       exclude_wt = opt$qc_plot_exclude_wt)
+    stats_res$stats.df = qc_metrics$stats.df
+    replicate_qc_plots = getReplicateQCPlots(stats.df = stats_res$stats.df,
+                                             replicate.udp.fractions.df = qc_metrics$replicate.udp.fractions.df,
+                                             region_title = region$name)
   }
   
   # UNS plot
@@ -428,9 +447,11 @@ doFullDeletionAnalysis = function(region, replicates.df, read_data = NULL)
   
   p.variance_components = NULL
   if (opt$variance_analysis) {
-    p.variance_components = getVarianceComponentsPlots(replicate.udp.df, replicates.df, method = "read_fraction",
-                                                       min_udp_total_count = opt$variance_analysis_min_count,
-                                                       min_udp_fraction = opt$variance_analysis_min_fraction)
+    varcomp = getVarianceComponents(replicate.udp.df, replicates.df, method = "read_fraction",
+                                    min_udp_total_count = opt$variance_analysis_min_count,
+                                    min_udp_fraction = opt$variance_analysis_min_fraction)
+    p.variance_components = getVarianceComponentsPlots(varcomp$vp.cDNA, varcomp$vp.gDNA,
+                                                       plot_title = sprintf("%s variance components", replicates.df$name[1]))
   }
   
   p.variance_fit = NULL
@@ -446,8 +467,8 @@ doFullDeletionAnalysis = function(region, replicates.df, read_data = NULL)
   plot_list = list(stats = stats_res$p.stats,
                    merged_udp = p.merged_UDP,
                    merged_del_profile = p.del_profile,
-                   replicate_qc_1 = p.replicate_qc.1,
-                   replicate_qc_2 = p.replicate_qc.2,
+                   replicate_qc_1 = replicate_qc_plots$p1,
+                   replicate_qc_2 = replicate_qc_plots$p2,
                    merged_UNS = p.merged_UNS,
                    variance_components = p.variance_components,
                    variance_fit = p.variance_fit,
@@ -534,65 +555,6 @@ getFullReplicateStats = function(replicate_list, rel_sites) {
     
     summary.right.prop = paste(del.summary.prop_2bp, del.summary.prop_10bp, del.summary.prop_20bp, sep = "\n")
   }
-  
-  # Summary of stats from the beta binomial model method
-  #### Currently we aren't doing this because the beta binomial method doesn't seem
-  #### to be reliable given the level of noise between replicates
-  # fm1 = NULL
-  # fm2 = NULL
-  # if (sum(stats.df$type == "cDNA") < 1 | sum(stats.df$type == "gDNA") < 1) {
-  #   summary.method.betabin = sprintf("Beta binomial\nUnable to calculate\nOnly %d gDNA and %d cDNA replicates",
-  #                                    sum(stats.df$type == "gDNA"), sum(stats.df$type == "cDNA"))
-  # } else {
-  #   test.df.hdr = stats.df %>%
-  #     dplyr::mutate(name = paste(name, replicate, type, sep="_"),
-  #                   is_cDNA = as.integer(type == "cDNA")) %>%
-  #     dplyr::select(name, is_cDNA, wt = num_wt_reads, hdr = num_hdr_reads)
-  #   #fm1 = betabin(cbind(hdr, wt) ~ is_cDNA, ~ 1, data = test.df[,2:4])
-  #   #test.df.hdr$is_cDNA[3] = T
-  #   betabin_warn_err = ""
-  #   res_hdr = tryCatch(fm1 <- betabin(cbind(hdr, wt) ~ is_cDNA, ~ 1, data = test.df.hdr[,2:4]),
-  #                      error = function(e) e, warning = function(w) w)
-  #   betabin_hdr_star = ""
-  #   if (is(res_hdr, "warning") | is(res_hdr, "error")) {
-  #     betabin_hdr_star = "**"
-  #     betabin_warn_err = paste(strwrap(paste("**", trimws(res_hdr$message)), width = 50), collapse = "\n")
-  #     if (is(res_hdr, "warning")) {
-  #       # When it's a warning it still produces output, but for some reason
-  #       # when we catch the exception the return value fm1 isn't assigned
-  #       fm1 <- betabin(cbind(hdr, wt) ~ is_cDNA, ~ 1, data = test.df.hdr[,2:4])
-  #     }
-  #   }
-  #   betabin_hdr_pval_str = "**"
-  #   if (!is.null(fm1)) {
-  #     betabin_hdr_pval_str = sprintf("%.3g%s", summary(fm1)@Coef$`Pr(> |z|)`[2], betabin_hdr_star)
-  #   }
-  #   
-  #   test.df.del = stats.df %>%
-  #     dplyr::mutate(name = paste(name, replicate, type, sep="_"),
-  #                   is_cDNA = as.integer(type == "cDNA")) %>%
-  #     dplyr::select(name, is_cDNA, wt = num_wt_reads, del = num_deletion_reads)
-  #   #fm2 = betabin(cbind(del, wt) ~ is_cDNA, ~ 1, data = test.df.del[,2:4])
-  #   res_del = tryCatch(fm2 <- betabin(cbind(del, wt) ~ is_cDNA, ~ 1, data = test.df.del[,2:4]),
-  #                      error = function(e) e, warning = function(w) w)
-  #   betabin_del_star = ""
-  #   if (is(res_del, "warning") | is(res_del, "error")) {
-  #     betabin_del_star = "**"
-  #     betabin_warn_err = paste("**", trimws(res_del$message))
-  #     if (is(res_del, "warning")) {
-  #       # When it's a warning it still produces output, but for some reason
-  #       # when we catch the exception the return value fm1 isn't assigned
-  #       fm2 <- betabin(cbind(del, wt) ~ is_cDNA, ~ 1, data = test.df.del[,2:4])
-  #     }
-  #   }
-  #   betabin_del_pval_str = "**"
-  #   if (!is.null(fm2)) {
-  #     betabin_del_pval_str = sprintf("%.3g%s", summary(fm2)@Coef$`Pr(> |z|)`[2], betabin_del_star)
-  #   }
-  #   
-  #   summary.method.betabin = sprintf("Beta binomial\ncDNA:gDNA ratio (HDR/WT): p = %s\ncDNA:gDNA ratio (DEL/WT): p = %s\n%s",
-  #                                    betabin_hdr_pval_str, betabin_del_pval_str, betabin_warn_err)
-  # }
   
   # Convert to strings for nice printing (with 3 significant digits)
   stats.plot.df = stats.df %>% dplyr::select(replicate, type, num_udps, HDR_WT_ratio, DEL_WT_ratio,
@@ -1340,32 +1302,36 @@ getDeletionProfilePlot = function(replicate.udp.df, sites, plot_title = NA, show
 
 
 getReplicateStatsPlot = function(stats.df, region_title) {
-  color_values = c(`cDNA`="firebrick1", `gDNA`="dodgerblue3")
-  p1 = ggplot(stats.df, aes(x=replicate, y=num_reads, fill=type)) +
+  color_values = c(`cDNA`="firebrick1", `cDNA outlier`="orange1", `gDNA`="dodgerblue3", `gDNA outlier`="turquoise1")
+  stats.df$replicate = fct_reorder(stats.df$replicate, as.integer(factor(stats.df$type)))
+  stats.df = stats.df %>% group_by(type) %>%
+    mutate(type2 = ifelse(!is.na(is_outlier) & is_outlier, paste(type, "outlier"), type)) %>%
+    arrange(replicate)
+  p1 = ggplot(stats.df, aes(x=replicate, y=num_reads, fill=type2)) +
     geom_bar(stat = "identity", alpha = 0.8) +
     geom_text(aes(label = sprintf("%d", num_reads)), size = 2.4, position = position_stack(vjust = 0.5)) +
-    theme_bw(10) + theme(axis.text.x = element_text(angle = 30, hjust = 1), legend.title=element_blank(), axis.title.x = element_blank()) +
+    theme_bw(10) + theme(axis.text.x=element_blank(), legend.title=element_blank(), axis.title.x = element_blank()) +
     scale_fill_manual(values = color_values) +
     ylab("Number of reads") +
     ggtitle("Number of reads")
   
-  p2 = ggplot(stats.df, aes(x=replicate, y=num_udps, fill=type)) +
+  p2 = ggplot(stats.df, aes(x=replicate, y=num_udps, fill=type2)) +
     geom_bar(stat = "identity", alpha = 0.8) +
     geom_text(aes(label = sprintf("%d", num_udps)), size = 2.4, position = position_stack(vjust = 0.5)) +
-    theme_bw(10) + theme(axis.text.x = element_text(angle = 30, hjust = 1), legend.title=element_blank(), axis.title.x = element_blank()) +
+    theme_bw(10) + theme(axis.text.x=element_blank(), legend.title=element_blank(), axis.title.x = element_blank()) +
     scale_fill_manual(values = color_values, guide=F) +
     ylab("Number of UDPs") +
     ggtitle("Number of UDPs")
   
-  p3 = ggplot(stats.df, aes(x=replicate, y=HDR_WT_ratio, fill=type)) +
+  p3 = ggplot(stats.df, aes(x=replicate, y=HDR_WT_ratio, fill=type2)) +
     geom_bar(stat = "identity", alpha = 0.8) +
     geom_text(aes(label = sprintf("%.3g", HDR_WT_ratio)), size = 2.4, position = position_stack(vjust = 0.5)) +
-    theme_bw(10) + theme(axis.text.x = element_text(angle = 30, hjust = 1), legend.title=element_blank(), axis.title.x = element_blank()) +
+    theme_bw(10) + theme(axis.text.x=element_blank(), legend.title=element_blank(), axis.title.x = element_blank()) +
     scale_fill_manual(values = color_values, guide=F) +
     ylab("HDR:WT ratio") +
     ggtitle("HDR:WT ratio")
   
-  p4 = ggplot(stats.df, aes(x=replicate, y=DEL_WT_ratio, fill=type)) +
+  p4 = ggplot(stats.df, aes(x=replicate, y=DEL_WT_ratio, fill=type2)) +
     geom_bar(stat = "identity", alpha = 0.8) +
     geom_text(aes(label = sprintf("%.3g", DEL_WT_ratio)), size = 2.4, position = position_stack(vjust = 0.5)) +
     theme_bw(10) + theme(axis.text.x = element_text(angle = 30, hjust = 1), legend.title=element_blank()) +
@@ -1380,10 +1346,11 @@ getReplicateStatsPlot = function(stats.df, region_title) {
   p.res
 }
 
-getReplicateQCPlot = function(replicate.udp.df, region_title, max_udps = 20, min_avg_udp_fraction = 0.005, exclude_wt = FALSE) {
-  # Here we generate a plot that shows, for each replicate, the UDP fraction
-  # for the top N UDPs across replicates. This should enable visually
-  # identifying outlier samples, based on the variability of the UDP fractions.
+getReplicateQCMetrics = function(stats.df, replicate.udp.df, max_udps = 20, min_avg_udp_fraction = 0.005, exclude_wt = FALSE) {
+  # Here we get various metrics for each replicate that enable visual or automatic
+  # QC. One of the key inputs is, for each replicate, the UDP fraction for the
+  # top N UDPs. When plotted, this should enable visually identifying outlier
+  # samples based on the variability of the UDP fractions.
   
   # We need to have a value for each fo the top N UDPs. To do this,
   # spread the replicates out into columns (cDNA_1, cDNA_2, etc.), with
@@ -1428,6 +1395,8 @@ getReplicateQCPlot = function(replicate.udp.df, region_title, max_udps = 20, min
     dplyr::group_by(udp) %>%
     dplyr::summarise(avg_udp_fraction = mean(udp_fraction),
                      avg_gdna_udp_fraction = mean(udp_fraction[type == "gDNA"]))
+  
+  replicate.udp.filled.df$replicate = fct_reorder(replicate.udp.filled.df$replicate, as.integer(factor(replicate.udp.filled.df$type)))
   replicate.udp.filled.df = replicate.udp.filled.df %>%
     dplyr::left_join(udp.avg.fractions, by = "udp") %>%
     dplyr::filter(avg_udp_fraction >= min_avg_udp_fraction)
@@ -1436,66 +1405,152 @@ getReplicateQCPlot = function(replicate.udp.df, region_title, max_udps = 20, min
   replicate.udp.filled.df$udp = factor(replicate.udp.filled.df$udp, levels=unique(replicate.udp.filled.df$udp))
   replicate.udp.filled.df$udp_id = factor(as.integer(replicate.udp.filled.df$udp))
   
-  color_values = c(`cDNA`="firebrick1", `gDNA`="dodgerblue3")
+  # Compute a statistic which, for each replicate, is the mean deviation of the
+  # replicate's UDP fractions from the mean UDP fractions across replicates.
+  replicate.udp_avg_deviation.df = replicate.udp.filled.df %>%
+    dplyr::group_by(replicate) %>%
+    dplyr::summarise(avg_udp_deviation = mean(abs(udp_fraction - avg_udp_fraction)),
+                     type = first(type))
+  
+  # Compute the deviation relative to the mean of gDNA only
+  replicate.udp_avg_deviation_from_gDNA.df = replicate.udp.filled.df %>%
+    dplyr::group_by(replicate) %>%
+    dplyr::summarise(avg_udp_deviation_from_gDNA = mean(abs(udp_fraction - avg_gdna_udp_fraction)),
+                     type = first(type))
+  
+  # Compute the average RELATIVE deviation (CV) across UDPs for each replicate.
+  replicate.udp_rel_deviation_from_gDNA.df = replicate.udp.filled.df %>%
+    dplyr::group_by(replicate) %>%
+    dplyr::summarise(avg_udp_rel_deviation_from_gDNA = mean(abs(udp_fraction / avg_gdna_udp_fraction - 1)),
+                     type = first(type))
+  
+  stats.new.df = stats.df %>%
+    dplyr::left_join(replicate.udp_avg_deviation.df, by=c("replicate", "type")) %>%
+    dplyr::left_join(replicate.udp_avg_deviation_from_gDNA.df, by=c("replicate", "type")) %>%
+    dplyr::left_join(replicate.udp_rel_deviation_from_gDNA.df, by=c("replicate", "type"))
+  
+  # Use multiple metrics across replicates to calculate outlier scores using KNN
+  # and isolation forest, separately for cDNA and gDNA
+  n_cDNA = sum(stats.df$type == "cDNA")
+  n_gDNA = sum(stats.df$type == "gDNA")
+  stats.new.df$outlier_score_knn = NA
+  stats.new.df$outlier_score_iso = NA
+  stats.new.df$is_outlier = NA
+  if (n_cDNA >= 4 & !any(is.na(stats.new.df$avg_udp_deviation))) {
+    stats.cDNA.df = stats.new.df %>%
+      filter(type == "cDNA") %>%
+      select(num_udps, HDR_WT_ratio, DEL_WT_ratio, avg_udp_deviation, avg_udp_deviation_from_gDNA)
+    # Compute KNN outlier metric. First scale the data, and for UDP deviation set low values to
+    # zero since these are good and shouldn't be considered outliers.
+    stats_scaled <- scale(stats.cDNA.df)
+    stats_scaled[is.na(stats_scaled)] = 0
+    stats_scaled[, "avg_udp_deviation"] = sapply(stats_scaled[, "avg_udp_deviation"], function(x) max(0, x))
+    stats_scaled[, "avg_udp_deviation_from_gDNA"] = sapply(stats_scaled[, "avg_udp_deviation_from_gDNA"], function(x) max(0, x))
+    stats_nn <- get.knn(stats_scaled, k = max(2, floor(n_cDNA / 2)))
+    stats_nnd <- rowMeans(stats_nn$nn.dist)
+    stats.new.df[stats.new.df$type == "cDNA",]$outlier_score_knn = stats_nnd
+    # Compute isolation forest outlier metric
+    stats_forest <- iForest(stats.cDNA.df, nt = 100, phi = n_cDNA)
+    forest_score <- predict(stats_forest, newdata = stats.cDNA.df)
+    stats.new.df[stats.new.df$type == "cDNA",]$outlier_score_iso <- forest_score
+    
+    stats.new.df[stats.new.df$type == "cDNA",]$is_outlier = (stats.new.df[stats.new.df$type == "cDNA",]$outlier_score_knn > 3)
+  }
+  if (n_gDNA >= 4 & !any(is.na(stats.new.df$avg_udp_deviation))) {
+    stats.gDNA.df = stats.new.df %>%
+      filter(type == "gDNA") %>%
+      select(num_udps, HDR_WT_ratio, DEL_WT_ratio, avg_udp_deviation, avg_udp_deviation_from_gDNA)
+    stats_scaled <- scale(stats.gDNA.df)
+    stats_scaled[is.na(stats_scaled)] = 0
+    stats_scaled[, "avg_udp_deviation"] = sapply(stats_scaled[, "avg_udp_deviation"], function(x) max(0, x))
+    stats_scaled[, "avg_udp_deviation_from_gDNA"] = sapply(stats_scaled[, "avg_udp_deviation_from_gDNA"], function(x) max(0, x))
+    stats_nn <- get.knn(stats_scaled, k = max(2, floor(n_gDNA / 2)))
+    stats_nnd <- rowMeans(stats_nn$nn.dist)
+    stats.new.df[stats.new.df$type == "gDNA",]$outlier_score_knn = stats_nnd
+    
+    stats_forest <- iForest(stats.gDNA.df, nt = 100, phi = n_gDNA)
+    forest_score <- predict(stats_forest, newdata = stats.gDNA.df)
+    stats.new.df[stats.new.df$type == "gDNA",]$outlier_score_iso <- forest_score
+    
+    stats.new.df[stats.new.df$type == "gDNA",]$is_outlier = (stats.new.df[stats.new.df$type == "gDNA",]$outlier_score_knn > 3)
+  }
+  
+  return( list(stats.df = stats.new.df,
+               replicate.udp.fractions.df = replicate.udp.filled.df) )
+}
+
+getReplicateQCPlots = function(stats.df, replicate.udp.fractions.df, region_title) {
+  color_values = c(`cDNA`="firebrick1", `cDNA outlier`="orange1", `gDNA`="dodgerblue3", `gDNA outlier`="turquoise1")
   shapes = c(16,17,15,3,12,8,6,5,0,1,11,10,18,7,9,2,3,4,13,14)
-  num_gDNA_reps = length(unique(replicate.udp.filled.df %>% dplyr::filter(type == "gDNA") %>% .$replicate))
-  num_cDNA_reps = length(unique(replicate.udp.filled.df %>% dplyr::filter(type == "cDNA") %>% .$replicate))
+  num_gDNA_reps = length(unique(replicate.udp.fractions.df %>% dplyr::filter(type == "gDNA") %>% .$replicate))
+  num_cDNA_reps = length(unique(replicate.udp.fractions.df %>% dplyr::filter(type == "cDNA") %>% .$replicate))
   shape_values = c(shapes[1:min(20, num_cDNA_reps)], shapes[1:min(20, num_gDNA_reps)])
-  p.udp_fractions = ggplot(replicate.udp.filled.df, aes(x=udp_id, y=udp_fraction, group=replicate, col=type, shape=replicate)) +
+  if (length(unique(replicate.udp.fractions.df$replicate)) <= 20) {
+    p.udp_fractions = ggplot(replicate.udp.fractions.df, aes(x=udp_id, y=udp_fraction, group=replicate, col=type, shape=replicate))
+  } else {
+    p.udp_fractions = ggplot(replicate.udp.fractions.df, aes(x=udp_id, y=udp_fraction, group=replicate, col=type))
+  }
+  p.udp_fractions = p.udp_fractions +
     geom_line() + geom_point(size=3, alpha=0.5) +
     scale_color_manual(values = color_values, guide = F) +
     scale_shape_manual(values = shape_values) +
     theme_bw(10) + xlab("UDP") + ylab("UDP fraction") +
+    scale_y_log10() +
     ggtitle(sprintf("UDP fractions (min %.2g%%, %d UDPs)", min_avg_udp_fraction*100, num_udps))
   
-  # Compute a statistic which, for each replicate, is the mean deviation
-  # of the replicate's UDP fractions from the mean UDP fractions across
-  # replicates.
-  replicate.udp_avg_deviation.df = replicate.udp.filled.df %>%
-    dplyr::group_by(replicate) %>%
-    dplyr::summarise(avg_deviation = mean(abs(udp_fraction - avg_udp_fraction)),
-                     type = first(type))
-  p.udp_avg_deviation = ggplot(replicate.udp_avg_deviation.df, aes(x=replicate, y=avg_deviation, fill=type)) +
+  stats.df = stats.df %>% group_by(type) %>%
+    mutate(type2 = ifelse(!is.na(is_outlier) & is_outlier, paste(type, "outlier"), type)) %>%
+    arrange(replicate)
+  p.udp_avg_deviation = ggplot(stats.df %>% filter(!is.na(avg_udp_deviation)),
+                               aes(x=replicate, y=avg_udp_deviation, fill=type2)) +
     geom_bar(stat = "identity", alpha = 0.8) +
-    geom_text(aes(label = sprintf("%.2g%%", avg_deviation*100)), size = 2.4, position = position_stack(vjust = 0.5)) +
-    theme_bw(10) + theme(axis.text.x = element_text(angle = 30, hjust = 1), axis.title.x=element_blank(), legend.title=element_blank()) +
+    geom_text(aes(label = sprintf("%.2g%%", avg_udp_deviation*100)), size = 2.4, position = position_stack(vjust = 0.5)) +
+    theme_bw(10) + theme(axis.text.x=element_blank(), axis.title.x=element_blank(), legend.title=element_blank(), legend.position="none") +
     scale_fill_manual(values = color_values) +
     ylab("UDP frac deviation") +
     ggtitle("Mean UDP fraction deviation")
   
-  # Compute the deviation relative to the mean of gDNA only
-  replicate.udp_avg_deviation.df = replicate.udp.filled.df %>%
-    dplyr::group_by(replicate) %>%
-    dplyr::summarise(avg_deviation = mean(abs(udp_fraction - avg_gdna_udp_fraction)),
-                     type = first(type))
-  p.udp_avg_deviation_gDNA = ggplot(replicate.udp_avg_deviation.df, aes(x=replicate, y=avg_deviation, fill=type)) +
+  p.udp_avg_deviation_gDNA = ggplot(stats.df %>% filter(!is.na(avg_udp_deviation_from_gDNA)),
+                                    aes(x=replicate, y=avg_udp_deviation_from_gDNA, fill=type2)) +
     geom_bar(stat = "identity", alpha = 0.8) +
-    geom_text(aes(label = sprintf("%.2g%%", avg_deviation*100)), size = 2.4, position = position_stack(vjust = 0.5)) +
-    theme_bw(10) + theme(axis.text.x = element_text(angle = 30, hjust = 1), axis.title.x=element_blank(), legend.title=element_blank()) +
+    geom_text(aes(label = sprintf("%.2g%%", avg_udp_deviation_from_gDNA*100)), size = 2.4, position = position_stack(vjust = 0.5)) +
+    theme_bw(10) + theme(axis.text.x=element_blank(), axis.title.x=element_blank(), legend.title=element_blank()) +
     scale_fill_manual(values = color_values) +
     ylab("UDP frac deviation") +
     ggtitle("Mean UDP fraction deviation (compared to gDNA)")
   
-  # Compute the average RELATIVE deviation (CV) across UDPs for
-  # each replicate.
-  replicate.udp_rel_deviation.df = replicate.udp.filled.df %>%
-    dplyr::group_by(replicate) %>%
-    dplyr::summarise(avg_rel_deviation = mean(abs(udp_fraction / avg_gdna_udp_fraction - 1)),
-                     type = first(type))
-  p.udp_avg_deviation_relative = ggplot(replicate.udp_rel_deviation.df, aes(x=replicate, y=avg_rel_deviation, fill=type)) +
-    geom_bar(stat = "identity", alpha = 0.8) +
-    geom_text(aes(label = sprintf("%.0f%%", avg_rel_deviation*100)), size = 2.4, position = position_stack(vjust = 0.5)) +
-    theme_bw(10) + theme(axis.text.x = element_text(angle = 30, hjust = 1), legend.title=element_blank()) +
-    scale_fill_manual(values = color_values) +
-    ylab("UDP rel. deviation") +
-    ggtitle("Mean UDP fraction relative deviation (rel. to gDNA UDP mean)")
+  # p.udp_avg_deviation_relative = ggplot(stats.df, aes(x=replicate, y=avg_udp_rel_deviation_from_gDNA, fill=type2)) +
+  #   geom_bar(stat = "identity", alpha = 0.8) +
+  #   geom_text(aes(label = sprintf("%.0f%%", avg_udp_rel_deviation_from_gDNA*100)), size = 2.4, position = position_stack(vjust = 0.5)) +
+  #   theme_bw(10) + theme(axis.text.x = element_text(angle = 30, hjust = 1), legend.title=element_blank()) +
+  #   scale_fill_manual(values = color_values) +
+  #   ylab("UDP rel. deviation") +
+  #   ggtitle("Mean UDP fraction relative deviation (rel. to gDNA UDP mean)")
   
-  
+  outlier.df = stats.df
+  if (all(is.na(outlier.df$outlier_score_knn))) {
+    p.outlier_scores = ggplot(outlier.df, aes(x=replicate, y=outlier_score_knn)) +
+      geom_blank() +
+      theme_bw(10) + theme(axis.text.x = element_text(angle = 30, hjust = 1), legend.title=element_blank(), legend.position="none") +
+      xlab("Replicate") + ylab("Outlier score") +
+      ggtitle("KNN outlier score") +
+      annotate("text", x=outlier.df$replicate[1], y=NA, label="Outlier scores are only calculated with sufficient UDPs and >= 4 replicates", hjust = 0)
+  } else {
+    p.outlier_scores = ggplot(outlier.df, aes(x=replicate, y=outlier_score_knn, fill=type2)) +
+      geom_bar(stat = "identity", alpha = 0.8) +
+      geom_text(aes(label = sprintf("%.3g", outlier_score_knn)), size = 2.4, position = position_stack(vjust = 0.5)) +
+      theme_bw(10) + theme(axis.text.x = element_text(angle = 30, hjust = 1), legend.title=element_blank(), legend.position="none") +
+      scale_fill_manual(values = color_values) +
+      xlab("Replicate") + ylab("Outlier score") +
+      ggtitle("KNN outlier score")
+  }
+    
   p.title = ggdraw() + draw_label(sprintf("%s replicate QC", region_title), fontface='bold')
   #p.replicate_qc = plot_grid(p.udp_fractions, p.udp_avg_deviation, ncol=1)
   #p.res = plot_grid(p.title, p.replicate_qc, ncol=1, rel_heights=c(0.1, 1)) # rel_heights values control title margins
-  p.res = egg::ggarrange(p.title, p.udp_fractions, p.udp_avg_deviation, p.udp_avg_deviation_gDNA, p.udp_avg_deviation_relative, ncol=1, heights=c(1.5,4,4,4,4), draw = F)
-  p.res
+  p.res = egg::ggarrange(p.title, p.udp_fractions, p.udp_avg_deviation, p.udp_avg_deviation_gDNA, p.outlier_scores, ncol=1, heights=c(1.5,4,4,4,4), draw = F)
+
+  return( list(p1 = getReplicateStatsPlot(stats.df, region_title), p2 = p.res) )
 }
 
 
@@ -1921,9 +1976,9 @@ fitVarianceComponents = function(replicate.udp.spread.df, replicates.type.df) {
   vp
 }
 
-doVariancePartitionPlot = function(vp.df, residuals=T, color = NA) {
+doVariancePartitionPlot = function(vp.df, residuals=T, pointColor = NA) {
   vp.df = vp.df %>%
-    gather(variable, variance, -udp, -name) %>%
+    gather(variable, variance, -udp, -name, -frac) %>%
     mutate(pctvariance = variance*100)
   
   if (!residuals) {
@@ -1940,24 +1995,40 @@ doVariancePartitionPlot = function(vp.df, residuals=T, color = NA) {
     hues = seq(15, 375, length = n + 1)
     hcl(h = hues, l = 65, c = 100)[1:n]
   }
+  getFractionCategory = function(x) {
+    if (x < 0.005) { "< 0.5%" }
+    else if (x < 0.02) { "< 2%" }
+    else { "> 2%" }
+  }
+  vp.df$fraction = sapply(vp.df$frac, getFractionCategory)
+
+  plotaes = aes(color = "black")
+  if (!is.na(pointColor)) {
+    if (pointColor == "fraction") {
+      plotaes = aes(color = fraction)
+    } else {
+      plotaes = aes(color = pointColor)
+    }
+  }
   p = ggplot(vp.df, aes(x=variable, y=pctvariance, fill="grey")) +
     geom_violin(scale="width") +
     geom_boxplot(width=0.2, fill="grey80", outlier.shape = NA) +
-    geom_jitter(width = 0.2, alpha = 0.6, mapping = aes(color = "black")) +
-    theme_bw() +
+    geom_jitter(width = 0.2, alpha = 0.75, mapping = aes(color = fraction)) +
+    theme_bw() + guides(fill=FALSE) +
     theme(legend.position="none") + 
     theme(axis.text.x=element_text(angle=20, hjust = 1), axis.title.x=element_blank(), panel.grid=element_blank()) +
     ylab("Variance explained (%)") +
     ylim(c(0,100)) +
     scale_fill_manual(values = c("gray95"))
   #  scale_fill_manual(values = c(gg_color_hue(numVariables-1), "gray85"))
-  if (!is.na(color)) {
-    p = p + scale_color_manual(values = c(rep(color, numVariables)))
+  if (!is.na(pointColor) & pointColor == "fraction") {
+    #p = p + scale_color_manual(values = c(rep(color, numVariables)))
+    p = p + scale_color_manual(values = c("< 0.5%"="chartreuse", "< 2%"="blue", "> 2%"="red2"))
   }
   return(p)
 }
 
-getVarianceComponentsPlots = function(replicate.udp.df, replicates.df, method = "read_fraction", min_udp_total_count = 100, min_udp_fraction = 0.001, plot_title = NULL) {
+getVarianceComponents = function(replicate.udp.df, replicates.df, method = "read_fraction", min_udp_total_count = 100, min_udp_fraction = 0.001) {
   replicate_cols = colnames(replicates.df)[grepl("^replicate_", colnames(replicates.df))]
   if (length(replicate_cols) < 1) {
     stop("--variance_analysis option given but no columns beginning with 'replicate_' found in the --replicates file")
@@ -1988,10 +2059,9 @@ getVarianceComponentsPlots = function(replicate.udp.df, replicates.df, method = 
   
   # This function returns a value based on the "num_reads" for each replicate,
   # but which is what we use to determine variance components. Raw number of
-  # reads is not really suitable. The recommended value is "deviation_from_poisson",
-  # where this represents the distance of a given replicate from the mean number
-  # of reads across replicates, ajusted for the expected variability for a
-  # poisson process.
+  # reads is not really suitable. The recommended value is "read_fraction",
+  # where this represents the fraction of reads that a UDP represents for a
+  # given replicate.
   getValueForVariance = function(replicate.udp.df, method) {
     if (method == "read_fraction") {
       replicate.numreads = replicate.udp.df %>%
@@ -2021,6 +2091,8 @@ getVarianceComponentsPlots = function(replicate.udp.df, replicates.df, method = 
   
   # Function to get variance components result for cDNA and gDNA for a single region
   getRegionVarianceComponents = function(replicate.udp.df, replicates.type.df, dnaType, min_udp_total_count, min_udp_fraction) {
+    region = replicate.udp.df$name[1]
+    replicates.type.df %>% dplyr::filter(name == region, type == dnaType)
     replicate.udp.type.df = filterUDPs(replicate.udp.df %>% dplyr::filter(type == dnaType),
                                        min_udp_total_count = min_udp_total_count, min_udp_fraction = min_udp_fraction)
     
@@ -2029,15 +2101,16 @@ getVarianceComponentsPlots = function(replicate.udp.df, replicates.df, method = 
     # Spread the replicates out into columns (cDNA_1, cDNA_2, etc.), with
     # fill = 0 for when a replicate has no value for a given UDP
     replicate.udp.type.spread.df = replicate.udp.type.df %>%
-      dplyr::select(udp, replicate, value) %>%
+      dplyr::select(udp, frac, replicate, value) %>%
       tidyr::spread(replicate, value, fill = 0)
     udpFraction = rowMeans(replicate.udp.type.spread.df %>% dplyr::select(-udp))
-    vp = fitVarianceComponents(replicate.udp.spread.df = replicate.udp.type.spread.df[udpFraction > 0.001,],
-                               replicates.type.df = replicates.type.df %>% dplyr::filter(type == dnaType))
+    vp = fitVarianceComponents(replicate.udp.spread.df = replicate.udp.type.spread.df %>% filter(frac > 0.001) %>% select(-frac),
+                               replicates.type.df = replicates.type.df)
     vp.df = NULL
     if (!is.null(vp)) {
       vp.df = data.frame(vp) %>% 
-        mutate(udp = rownames(vp))
+        mutate(udp = rownames(vp)) %>%
+        left_join(replicate.udp.type.spread.df %>% select(udp, frac), by="udp")
     }
     vp.df
   }
@@ -2045,42 +2118,65 @@ getVarianceComponentsPlots = function(replicate.udp.df, replicates.df, method = 
   #########################################################################
   dnaType = "cDNA"
   # Get variance components separately for each region (if there's more than one)
-  by.vp.dfs = by(replicate.udp.df, replicate.udp.df$name, FUN = getRegionVarianceComponents,
-                 replicates.type.df = replicates.df %>% dplyr::filter(type == dnaType),
-                 dnaType = dnaType, min_udp_total_count, min_udp_fraction)
-  # Merge each region's variance components result together
-  for (i in 1:length(by.vp.dfs)) {
-    by.vp.dfs[[i]]$name = names(by.vp.dfs)[i]
-  }
-  vp.cDNA.df = bind_rows(lapply(by.vp.dfs, function(x) x))
+  # by.vp.dfs = by(replicate.udp.df, replicate.udp.df$name, FUN = getRegionVarianceComponents,
+  #                replicates.type.df = replicates.df %>% dplyr::filter(type == dnaType),
+  #                dnaType = dnaType, min_udp_total_count, min_udp_fraction)
+  # # Merge each region's variance components result together
+  # for (i in 1:length(by.vp.dfs)) {
+  #   by.vp.dfs[[i]]$name = names(by.vp.dfs)[i]
+  # }
+  # vp.cDNA.df = bind_rows(lapply(by.vp.dfs, function(x) x))
   
+  regions = unique(replicate.udp.df$name)
+  dflist = list()
+  for (i in 1:length(regions)) {
+    dflist[[i]] = getRegionVarianceComponents(replicate.udp.df %>% filter(name == regions[i]),
+                                           replicates.df %>% dplyr::filter(name == regions[i], type == dnaType),
+                                           dnaType, min_udp_total_count, min_udp_fraction)
+    dflist[[i]]$name = regions[i]
+  }
+  vp.cDNA.df = bind_rows(dflist)
+  
+  # Do the same for gDNA
+  dnaType = "gDNA"
+  # by.vp.dfs = by(replicate.udp.df, replicate.udp.df$name, FUN = getRegionVarianceComponents,
+  #                replicates.type.df = replicates.df %>% dplyr::filter(type == dnaType),
+  #                dnaType = dnaType, min_udp_total_count, min_udp_fraction)
+  # for (i in 1:length(by.vp.dfs)) {
+  #   by.vp.dfs[[i]]$name = names(by.vp.dfs)[i]
+  # }
+  # vp.gDNA.df = bind_rows(lapply(by.vp.dfs, function(x) x))
+  regions = unique(replicate.udp.df$name)
+  dflist = list()
+  for (i in 1:length(regions)) {
+    dflist[[i]] = getRegionVarianceComponents(replicate.udp.df %>% filter(name == regions[i]),
+                                              replicates.df %>% dplyr::filter(name == regions[i], type == dnaType),
+                                              dnaType, min_udp_total_count, min_udp_fraction)
+    dflist[[i]]$name = regions[i]
+  }
+  vp.gDNA.df = bind_rows(dflist)
+  
+  return(list(vp.cDNA = vp.cDNA.df, vp.gDNA = vp.gDNA.df))
+}
+
+getVarianceComponentsPlots = function(vp.cDNA.df, vp.gDNA.df, plot_title = NULL) {
   if (nrow(vp.cDNA.df) <= 0) {
     p.cDNA = textPlot("Cannot make variance components plot.")
     cDNA.summary.df = data.frame(x="empty")
     cDNA_note = ""
   } else {
-    p.cDNA = doVariancePartitionPlot(vp.cDNA.df) + ggtitle(dnaType)
-    cDNA.summary.df = variancePartitionSummaryTable(vp.cDNA.df %>% dplyr::select(-name, -udp))
+    p.cDNA = doVariancePartitionPlot(vp.cDNA.df, pointColor="fraction") + ggtitle("cDNA")
+    cDNA.summary.df = variancePartitionSummaryTable(vp.cDNA.df %>% dplyr::select(-name, -udp, -frac))
     cDNA_note = sprintf("Based on %d UDPs with >%d reads, >%.1g%% udp fraction", nrow(vp.cDNA.df), min_udp_total_count, min_udp_fraction*100)
   }
-  
-  # Do the same for gDNA
-  dnaType = "gDNA"
-  by.vp.dfs = by(replicate.udp.df, replicate.udp.df$name, FUN = getRegionVarianceComponents,
-                 replicates.type.df = replicates.df %>% dplyr::filter(type == dnaType),
-                 dnaType = dnaType, min_udp_total_count, min_udp_fraction)
-  for (i in 1:length(by.vp.dfs)) {
-    by.vp.dfs[[i]]$name = names(by.vp.dfs)[i]
-  }
-  vp.gDNA.df = bind_rows(lapply(by.vp.dfs, function(x) x))
   
   if (nrow(vp.gDNA.df) <= 0) {
     p.gDNA = textPlot("Cannot make variance components plot.")
     gDNA.summary.df = data.frame(x="empty")
     gDNA_note = ""
   } else {
-    p.gDNA = doVariancePartitionPlot(vp.gDNA.df, color="blue") + ggtitle(dnaType)
-    gDNA.summary.df = variancePartitionSummaryTable(vp.gDNA.df %>% dplyr::select(-name, -udp))
+    p.gDNA = doVariancePartitionPlot(vp.gDNA.df, pointColor="fraction") + ggtitle("gDNA") + theme(legend.position="left")
+    gDNA.summary.df = variancePartitionSummaryTable(vp.gDNA.df %>% dplyr::select(-name, -udp, -frac))
     gDNA_note = sprintf("Based on %d UDPs with >%d reads, >%.1g%% udp fraction", nrow(vp.gDNA.df), min_udp_total_count, min_udp_fraction*100)
   }
   
@@ -2092,7 +2188,7 @@ getVarianceComponentsPlots = function(replicate.udp.df, replicates.df, method = 
                                             rowhead = list(fg_params=list(cex = 0.75)))
   
   if (is.null(plot_title)) {
-    plot_title = sprintf("%s variance components", replicates.df$name[1])
+    plot_title = "Variance components"
   }
   p.stats = ggplot(data.frame(x=1:10, y=1:10), aes(x,y)) + geom_blank() + ggThemeBlank +
     annotation_custom(tableGrob(cDNA.summary.df, theme = myTableTheme), xmin=1, xmax=5, ymin=2, ymax=8.5) +
@@ -2105,7 +2201,7 @@ getVarianceComponentsPlots = function(replicate.udp.df, replicates.df, method = 
     annotate("text", x=6, y=1, label = gDNA_note, hjust = 0, vjust = 0, size = 3)
   
   #egg::ggarrange(p.stats, grid.arrange(p.cDNA, p.gDNA, ncol=2), nrow = 1)
-  plot_grid(p.stats, plot_grid(p.cDNA, p.gDNA, nrow = 1), nrow = 2, rel_heights = c(0.4, 0.6))
+  return( plot_grid(p.stats, plot_grid(p.cDNA, p.gDNA, nrow = 1, rel_widths=c(0.46, 0.54)), nrow = 2, rel_heights = c(0.4, 0.6)) )
 }
 
 variancePartitionSummaryTable = function(vp.df) {
