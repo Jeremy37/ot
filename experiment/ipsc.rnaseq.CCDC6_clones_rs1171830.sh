@@ -42,7 +42,7 @@ grep -iP "Abort|Failed|TERM|error" FarmOut/indexBams.*.txt | wc -l
 samtools view -H "cram/27963_7#1.cram" | ~/src/utils/bam/genomeFileFromBamHeader.py > GRCh38.genome.txt
 
 cut -f 1 irods.samples.txt | submitJobs.py --MEM 3000 --jobname bamCoverageToBigWig \
-    --command "~/src/utils/coverage/bam2bigwig.py --genome GRCh38.genome.txt --indir bam"
+    --command "~/src/utils/coverage/bam2bigwig.py --genome GRCh38.genome.txt --indir bam --split"
 grep "Successfully completed" FarmOut/bamCoverageToBigWig.*.txt | wc -l
 grep "memory" FarmOut/bamCoverageToBigWig.*.txt | wc -l
 grep -iP "Failed|TERM|error" FarmOut/bamCoverageToBigWig.*.txt | wc -l
