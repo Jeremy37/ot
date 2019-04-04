@@ -6,6 +6,7 @@ JS=$OTCOREGEN/jeremys
 AD_FINEMAP=$JS/AD_finemap 
 cd $AD_FINEMAP
 
+
 # Backup all data provided by Biogen
 rsync -a -u $OTCOREGEN/AD_PD_finemap /warehouse/compgen_wh05/js29/opentargets
 
@@ -13,18 +14,23 @@ mkdir $AD_FINEMAP/finemap_credset
 cp $OTCOREGEN/AD_PD_finemap/AD_credible_sets/v2/* $AD_FINEMAP/finemap_credset
 cp $OTCOREGEN/AD_PD_finemap/AD_finemap_output/v2/* $AD_FINEMAP/finemap_credset
 
-mkdir $OTCOREGEN/AD_PD_finemap/summary_stats
-ln -s $OTCOREGEN/AD_PD_finemap/ADD.proxy_v2.bgen.stats.gz $AD_FINEMAP/summary_stats/ADD.proxy_v2.bgen.stats.gz
-zcat $OTCOREGEN/AD_PD_finemap/summary_stats/AD.IGAP1_GWAX_v2.meta.gz | tr ' ' '\t' | bgzip > $AD_FINEMAP/summary_stats/AD.IGAP1_GWAX_v2.meta.bgz
-tabix -s 1 -b 2 -e 2 -S 1 $AD_FINEMAP/summary_stats/AD.IGAP1_GWAX_v2.meta.bgz
+# Create symlinks in AD_finemap dir to UKBB summary stats
+mkdir $AD_FINEMAP/summary_stats
+ln -s $OTCOREGEN/AD_PD_finemap/summary_stats/ADD.proxy_v2.bgen.stats.gz $AD_FINEMAP/summary_stats/ADD.proxy_v2.bgen.stats.gz
+zcat $OTCOREGEN/AD_PD_finemap/summary_stats/AD.IGAP1_GWAX_v3.meta.gz | tr ' ' '\t' | bgzip > $AD_FINEMAP/summary_stats/AD.IGAP1_GWAX_v3.meta.bgz
+tabix -s 1 -b 2 -e 2 -S 1 $AD_FINEMAP/summary_stats/AD.IGAP1_GWAX_v3.meta.bgz
+
+ln -s $OTCOREGEN/AD_PD_finemap/ukbb_frequencies/ $AD_FINEMAP/summary_stats/ukbb_frequencies
+ln -s $OTCOREGEN/AD_PD_finemap/ukbb_sample_regions/ $AD_FINEMAP/gcta/input/ukbb_sample_regions
 
 
 mkdir $AD_FINEMAP/reference
 ln -s $OTCOREGEN/jeremys/reference/dbSNP $AD_FINEMAP/reference/dbSNP
 ln -s $OTCOREGEN/jeremys/reference/vep_impact_table.tsv $AD_FINEMAP/reference/vep_impact_table.tsv
 
+mkdir $AD_FINEMAP/reference/annotations
 cd $AD_FINEMAP/reference/annotations
-ln -s /lustre/scratch117/cellgen/team170/js29/annotations/Roadmap Roadmap
+ln -s /warehouse/compgen_wh05/js29/annotations/Roadmap Roadmap
 cat $OTCOREGEN/jeremys/ipsneurons/GRCh37/ATAC/peaks/atac_ipsc_peaks.narrowPeak | tr -s '\n' > $AD_FINEMAP/reference/annotations/atac_ipsc_peaks.GRCh37.narrowPeak
 cat $OTCOREGEN/jeremys/ipsneurons/GRCh37/ATAC/peaks/atac_npc_peaks.narrowPeak | tr -s '\n' > $AD_FINEMAP/reference/annotations/atac_npc_peaks.GRCh37.narrowPeak
 cat $OTCOREGEN/jeremys/ipsneurons/GRCh37/ATAC/peaks/atac_neuron_peaks.narrowPeak | tr -s '\n' > $AD_FINEMAP/reference/annotations/atac_neuron_peaks.GRCh37.narrowPeak
@@ -36,10 +42,13 @@ cp $OTCOREGEN/jeremys/sensoryneurons/GRCh37/ATAC_consensus_peaks.bed $AD_FINEMAP
 wget http://fantom.gsc.riken.jp/5/datafiles/latest/extra/Enhancers/human_permissive_enhancers_phase_1_and_2.bed.gz
 mv human_permissive_enhancers_phase_1_and_2.bed.gz fantom.human_permissive_enhancers_phase_1_and_2.bed.gz
 
+md $AD_FINEMAP/gcta/input
+ln -s $OTCOREGEN/AD_PD_finemap/ukbb_sample_regions $AD_FINEMAP/gcta/input/ukbb_sample_regions
 
 ln -s $OTCOREGEN/jeremys/annotation/JEME $AD_FINEMAP/reference/JEME
 
 ####### GWAS data for coloc
+mkdir $AD_FINEMAP/coloc
 ln -s $JS/datasets/GWAS $AD_FINEMAP/coloc/GWAS
 
 
