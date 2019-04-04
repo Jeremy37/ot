@@ -73,7 +73,6 @@ vsd <- vst(dds, blind=T)
 getRPKMSummary = function(counts) {
   rpm = apply(counts, MARGIN=2, FUN=function(x) x / sum(x)) * 1e6
   rpkm.mat = apply(rpm * 1e3, MARGIN=2, FUN=function(x) x / gene.meta$length)
-  rpkm.df = cbind(data.frame(gene_id = rownames(rpkm.mat)), rpkm.mat)
   data.frame(gene_id = rownames(rpkm.mat),
              median.rpkm = rowMedians(rpkm.mat),
              mean.rpkm = rowMeans(rpkm.mat),
@@ -81,6 +80,20 @@ getRPKMSummary = function(counts) {
 }
 ipsc.rpkm.avgs.df = getRPKMSummary(normalized_counts[, ipsc_samples])
 mg.rpkm.avgs.df = getRPKMSummary(normalized_counts[, mg_samples])
+
+# Save RPKM averages in iPSC and microglia to files
+grch38_ensg_sym = grch38 %>% filter(!duplicated(ensgene)) %>% select(gene_id=ensgene, symbol)
+write.table(ipsc.rpkm.avgs.df %>% left_join(grch38_ensg_sym, by="gene_id") %>% select(gene_id, symbol, everything()),
+            file=file.path(outputPath, "iPSC.avg_rpkm.tsv"), sep="\t", quote=F, row.names=F, col.names=T, na="")
+write.table(mg.rpkm.avgs.df %>% left_join(grch38_ensg_sym, by="gene_id") %>% select(gene_id, symbol, everything()),
+            file=file.path(outputPath, "microglia.avg_rpkm.tsv"), sep="\t", quote=F, row.names=F, col.names=T, na="")
+
+# Also save RPKMs for individual samples
+rpm = apply(normalized_counts, MARGIN=2, FUN=function(x) x / sum(x)) * 1e6
+rpkm.mat = apply(rpm * 1e3, MARGIN=2, FUN=function(x) x / gene.meta$length)
+rpkm.df = cbind(data.frame(gene_id = rownames(rpkm.mat)), rpkm.mat)
+write.table(rpkm.df %>% left_join(grch38_ensg_sym, by="gene_id") %>% select(gene_id, symbol, everything()),
+            file=file.path(outputPath, "sample.rpkms.tsv"), sep="\t", quote=F, row.names=F, col.names=T, na="")
 
 expressedGenes.ipsc = ipsc.rpkm.avgs.df %>% filter(mean.rpkm >= 1) %>% .$gene_id
 expressedGenes.mg = mg.rpkm.avgs.df %>% filter(mean.rpkm >= 1) %>% .$gene_id
