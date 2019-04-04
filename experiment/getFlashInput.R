@@ -4,6 +4,13 @@ suppressMessages(library(tidyverse))
 args <- commandArgs(trailingOnly = TRUE)
 regionsFile = args[1]
 fastqMetaFile = args[2]
+readLenParam = args[3]
+
+if (is.null(readLenParam) | is.na(readLenParam)) {
+  readLenParam = 150
+} else {
+  readLenParam = strtoi(readLenParam)
+}
 
 regions.df = readr::read_tsv(regionsFile)
 
@@ -21,7 +28,7 @@ getMinOverlap = function(amplicon_size, read_len) {
 }
 df = meta.df %>% dplyr::left_join(regions.df, by="name") %>%
   dplyr::rename(amplicon_size = end) %>%
-  dplyr::mutate(read_len = 150, amplicon_sd = 20,
+  dplyr::mutate(read_len = readLenParam, amplicon_sd = 20,
                 expected_overlap = 2*read_len - amplicon_size) %>%
   dplyr::mutate(output_file = paste0(replicate_full, ".extendedFrags.fastq.gz"))
 
