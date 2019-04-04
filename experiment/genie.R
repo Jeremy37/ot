@@ -24,6 +24,7 @@ main = function() {
     make_option(c("--exclude_multiple_deletions"), type="logical", default=F, action="store_true", help="[default %default]"),
     make_option(c("--exclude_nonspanning_reads"), type="logical", default=T, action="store_true", help="[default %default]"),
     make_option(c("--exclude_nonspanning_deletions"), type="logical", default=T, action="store_true", help="[default %default]"),
+    make_option(c("--ratio_to_total_reads"), type="logical", default=F, action="store_true", help="[default %default]"),
     make_option(c("--qc_plot_max_udps"), type="integer", default=20, metavar="INT", help="[default %default]"),
     make_option(c("--qc_plot_min_udp_fraction"), type="integer", default=0.005, metavar="FLOAT", help="[default %default]"),
     make_option(c("--qc_plot_exclude_wt"), type="logical", default=T, action="store_true", help="[default %default]"),
@@ -32,7 +33,7 @@ main = function() {
     make_option(c("--uns_plot_min_gDNA"), type="integer", default=10, metavar="INT", help="[default %default]"),
     make_option(c("--uns_plot_min_cDNA"), type="integer", default=0, metavar="INT", help="[default %default]"),
     make_option(c("--uns_plot_max_udps"), type="integer", default=40, metavar="INT", help="[default %default]"),
-    make_option(c("--no_allele_profile"), type="logical", default=F, action="store_true", help="[default %default]"),
+    make_option(c("--allele_profile"), type="logical", default=F, action="store_true", help="[default %default]"),
     make_option(c("--no_site_profile"), type="logical", default=F, action="store_true", help="[default %default]"),
     make_option(c("--no_udp_profile"), type="logical", default=F, action="store_true", help="[default %default]"),
     make_option(c("--no_uns_profile"), type="logical", default=F, action="store_true", help="[default %default]"),
@@ -49,7 +50,7 @@ main = function() {
     make_option(c("--read_data"), type="character", default=NULL)
   )
   
-  parser = OptionParser(usage = "paired.deletion.analysis.R --regions file.tsv --replicates file.tsv --out output_path [options]",
+  parser = OptionParser(usage = "genie.R --regions file.tsv --replicates file.tsv --out output_path [options]",
                         option_list = option_list)
   opt <<- parse_args(parser)
 
