@@ -23,6 +23,9 @@ tabix -s 1 -b 2 -e 2 -S 1 $AD_FINEMAP/summary_stats/AD.IGAP1_GWAX_v3.meta.bgz
 ln -s $OTCOREGEN/AD_PD_finemap/ukbb_frequencies/ $AD_FINEMAP/summary_stats/ukbb_frequencies
 ln -s $OTCOREGEN/AD_PD_finemap/ukbb_sample_regions/ $AD_FINEMAP/gcta/input/ukbb_sample_regions
 
+ln -s $OTCOREGEN/jeremys/datasets/SpliceAI/spliceai.merge.tsv.bgz $AD_FINEMAP/reference/spliceai.merge.tsv.bgz
+ln -s $OTCOREGEN/jeremys/datasets/SpliceAI/spliceai.merge.tsv.bgz.tbi $AD_FINEMAP/reference/spliceai.merge.tsv.bgz.tbi
+
 
 mkdir $AD_FINEMAP/reference
 ln -s $OTCOREGEN/jeremys/reference/dbSNP $AD_FINEMAP/reference/dbSNP
@@ -36,8 +39,10 @@ cat $OTCOREGEN/jeremys/ipsneurons/GRCh37/ATAC/peaks/atac_npc_peaks.narrowPeak | 
 cat $OTCOREGEN/jeremys/ipsneurons/GRCh37/ATAC/peaks/atac_neuron_peaks.narrowPeak | tr -s '\n' > $AD_FINEMAP/reference/annotations/atac_neuron_peaks.GRCh37.narrowPeak
 cat $OTCOREGEN/jeremys/ipsneurons/GRCh37/ATAC/peaks/atac_ineuron_peaks.narrowPeak | tr -s '\n' > $AD_FINEMAP/reference/annotations/atac_ineuron_peaks.GRCh37.narrowPeak
 cp $OTCOREGEN/jeremys/macrophage/GRCh37/ATAC_macrophage.peaks.GRCh37.bed $AD_FINEMAP/reference/annotations/atac_macrophage.peaks.GRCh37.bed
-cp $OTCOREGEN/jeremys/datasets/microglia/ATAC/peaks/atac_microglia_peaks.narrowPeak $AD_FINEMAP/reference/annotations/atac_microglia_peaks.GRCh37.narrowPeak
+cp $OTCOREGEN/jeremys/datasets/glass_microglia/ATAC/peaks/atac_microglia_peaks.narrowPeak $AD_FINEMAP/reference/annotations/atac_microglia_peaks.GRCh37.narrowPeak
 cp $OTCOREGEN/jeremys/sensoryneurons/GRCh37/ATAC_consensus_peaks.bed $AD_FINEMAP/reference/annotations/atac_sensoryneuron_peaks.GRCh37.bed
+gzip $AD_FINEMAP/reference/annotations/*.narrowPeak
+gzip $AD_FINEMAP/reference/annotations/*.bed
 
 wget http://fantom.gsc.riken.jp/5/datafiles/latest/extra/Enhancers/human_permissive_enhancers_phase_1_and_2.bed.gz
 mv human_permissive_enhancers_phase_1_and_2.bed.gz fantom.human_permissive_enhancers_phase_1_and_2.bed.gz
