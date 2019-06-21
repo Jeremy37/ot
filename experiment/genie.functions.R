@@ -40,8 +40,7 @@ runGenIE = function(option_list)
     opt$custom_del_span <<- T
   }
   
-  regions.df = readr::read_tsv(opt$regions, col_types="ccciiiiccc")
-  #regions.df = regions.df %>% dplyr::filter((index %in% c("29")))
+  regions.df = readr::read_tsv(opt$regions, col_types="cciiiiccc")
   if (any(duplicated(regions.df$name))) {
     duplicated_region = regions.df$name[ which(duplicated(regions.df$name))[1] ]
     stop(sprintf("All region names must be unique. Found duplicated region name: %s.", duplicated_region))
@@ -1897,12 +1896,17 @@ getUNSPlot = function(replicate.udp.df, replicates.df, sites, plot_title, min_gD
     dash_size = 0.8
     dot_size = 0.25
   }
-  p.udp = ggplot() + 
-    geom_rect(aes(xmin=min(pos), xmax=max(pos), ymin=(id-0.5), ymax=(id+0.5)), fill = "palegreen", data = plot.gather.df[plot.gather.df$`HDR allele`,]) +
+  if (any(plot.gather.df$`HDR allele`)) {
+    p.udp = ggplot() + 
+      geom_rect(aes(xmin=min(pos), xmax=max(pos), ymin=(id-0.5), ymax=(id+0.5)), fill = "palegreen", data = plot.gather.df[plot.gather.df$`HDR allele`,]) +
+      geom_point(aes(x = pos, y = id), size = dot_size, shape = 19, alpha = 0.7, data = plot.gather.df[plot.gather.df$udpchar == '-' & plot.gather.df$`HDR allele`,]) +
+      geom_point(aes(x = pos, y = id), size = dash_size, shape = '-', alpha = 0.8, data = plot.gather.df[plot.gather.df$udpchar == '*' & plot.gather.df$`HDR allele`,])
+  } else {
+    p.udp = ggplot()
+  }
+  p.udp = p.udp + 
     geom_point(aes(x = pos, y = id), size = dot_size, shape = 19, alpha = 0.7, data = plot.gather.df[plot.gather.df$udpchar == '-',]) +
     geom_point(aes(x = pos, y = id), size = dash_size, shape = '-', alpha = 0.8, data = plot.gather.df[plot.gather.df$udpchar == '*',]) +
-    geom_point(aes(x = pos, y = id), size = dot_size, shape = 19, alpha = 0.7, data = plot.gather.df[plot.gather.df$udpchar == '-' & plot.gather.df$`HDR allele`,]) +
-    geom_point(aes(x = pos, y = id), size = dash_size, shape = '-', alpha = 0.8, data = plot.gather.df[plot.gather.df$udpchar == '*' & plot.gather.df$`HDR allele`,]) +
     scale_color_manual(values = c("grey20", "green4")) +
     geom_point(aes(x = pos, y = id, shape = udpchar), color = "black", size = 2.5, data = plot.gather.df[!(plot.gather.df$udpchar == '*' | plot.gather.df$udpchar == '-'),]) + scale_shape_identity() +
     coord_cartesian(ylim=c(min(plot.gather.df$id), max(plot.gather.df$id)), xlim=c(sites$start, sites$end)) +
