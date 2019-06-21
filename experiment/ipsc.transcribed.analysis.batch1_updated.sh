@@ -28,8 +28,8 @@ Rscript $JS/src/experiment/getFlashInput.R batch1_updated.regions.tsv batch1_upd
 
 sed '1d' batch1_updated.flash_input.tsv | submitJobs.py --MEM 1000 --ncores 1 -q normal -j merge_fastq_flash \
     -c "~/src/utils/fastq/flashStitchFastq.py --outdir fastq_flash --indir ."
-grep "Successfully" FarmOut/merge_fastq_flash*.txt | wc -l
-grep -iP "ERROR" FarmOut/merge_fastq_flash*.txt | wc -l
+grep "Successfully" FarmOut/merge_fastq_flash.271*.txt | wc -l
+grep -iP "ERROR" FarmOut/merge_fastq_flash.271*.txt | wc -l
 
 echo -e "File name\tOutput name\tTotal pairs\tCombined pairs\tUncombined pairs\tPercent combined\tMin overlap\tMax overlap\tMax mismatch dens\tWarning" > flash_output.summary.tsv
 for f in FarmOut/merge_fastq_flash*.txt; do
@@ -43,7 +43,7 @@ sed '1d' batch1_updated.flash_input.tsv | cut -f 1,9 | submitJobs.py --MEM 500 -
     -c "~/src/utils/align/bwaMemAlign.py --outputDir $BAMDIR --noSampleDir --fastqDir fastq_flash --nCores 2 --params '-O 24,48 -E 1 -A 4 -B 16 -T 70 -k 19 -w 200 -d 600 -L 200 -U 40' --genomeDir $REFERENCE"
 grep "Successfully" FarmOut/align_fastq_flash_amplicon*.txt | wc -l
 grep -iP "Fail|Error" FarmOut/align_fastq_flash_amplicon*.txt | wc -l
-
+    
 
 # Sort bams by coordinate
 PATH=/software/solexa/pkg/biobambam/2.0.79/bin/:$PATH
@@ -63,6 +63,19 @@ grep -iP "Fail|Error" FarmOut/count_chrs*.txt | wc -l
 ll $BAMDIR/*.chr_counts | sed -e 's/  / /g' | sed -e 's/  / /g'  | sed -e 's/ /\t/g' | cut -f 9 > chr_counts.files.amplicon.txt
 Rscript $JS/src/experiment/mergeChrCounts.R chr_counts.files.amplicon.txt > chr_counts.amplicon.all.txt
 
+
+# Use more lenient soft-clipping parameters for aligning CLU_18. Because it is a short
+# amplicon, when there are deletions then the ends of reads go into no-mans-land, and
+# the resulting alignments have random insertions, unless they are allowed to be soft-clipped.
+sed '1d' batch1_updated.flash_input.tsv | cut -f 1,9 | grep 18_ | submitJobs.py --MEM 500 --ncores 2 -q normal -j align_fastq_flash_amplicon \
+    -c "~/src/utils/align/bwaMemAlign.py --outputDir $BAMDIR --noSampleDir --fastqDir fastq_flash --nCores 2 --params '-O 24,48 -E 1 -A 4 -B 16 -T 70 -k 19 -w 200 -d 600 -L 20 -U 40' --genomeDir $REFERENCE"
+grep "Successfully" FarmOut/align_fastq_flash_amplicon.283*.txt | wc -l
+grep -iP "Fail|Error" FarmOut/align_fastq_flash_amplicon.283*.txt | wc -l
+
+PATH=/software/solexa/pkg/biobambam/2.0.79/bin/:$PATH
+sed '1d' $META | cut -f1 | grep 18_ | submitJobs.py --MEM 1000 --ncores 1 -q normal -j bamsort -c "python ~/src/utils/bam/bamSortCoord.py --indir $BAMDIR --outdir $BAMDIR --noSampleDir"
+grep "Successfully" FarmOut/bamsort.284*.txt | wc -l
+grep -iP "Fail|Error" FarmOut/bamsort.284*.txt | wc -l
 
 
 ################################################################################

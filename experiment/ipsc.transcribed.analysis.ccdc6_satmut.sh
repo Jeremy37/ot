@@ -69,3 +69,8 @@ grep -iP "Fail|Error" FarmOut/count_chrs*.txt | wc -l
 
 ll $BAMDIR/*.chr_counts | sed -e 's/  / /g' | sed -e 's/  / /g'  | sed -e 's/ /\t/g' | cut -f 9 > chr_counts.files.amplicon.txt
 Rscript $JS/src/experiment/mergeChrCounts.R chr_counts.files.amplicon.txt > chr_counts.amplicon.all.txt
+
+
+####### in R, to compare SpliceAI scores vs. GenIE effect sizes
+Rscript ccdc6_satmut.plot_spliceai.R
+

@@ -59,3 +59,15 @@ cat bam/*/*.counts.txt.summary
 # Combine counts for samples into a single file
 Rscript $JS/src/misc/featureCounts.combine_counts.R irods.samples.txt bam CCDC6_clones_rs1171830.counts.txt.gz
 
+
+################################################################################
+# Extract BAM with just the CD33 region to look for ASE for Erica
+mkdir cd33
+for f in bam/*/*.bam; do
+  echo $f
+  filename=$(basename "$f")
+  fname_no_ext="${filename%.*}"
+  samtools view -b $f "chr19:51,224,000-51,241,250" > cd33/$fname_no_ext.cd33.bam
+  samtools index cd33/$fname_no_ext.cd33.bam
+done
+

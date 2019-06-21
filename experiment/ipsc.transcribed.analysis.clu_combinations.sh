@@ -47,7 +47,7 @@ done
 # Align to amplicon sequence
 BAMDIR=bam_amplicon
 sed '1d' clu_combinations.flash_input.tsv | cut -f 1,9 | submitJobs.py --MEM 200 --ncores 2 -q normal -j align_fastq_flash_amplicon \
-    -c "~/src/utils/align/bwaMemAlign.py --outputDir $BAMDIR --noSampleDir --fastqDir fastq_flash --nCores 2 --params '-O 24,48 -E 1 -A 4 -B 16 -T 70 -k 19 -w 200 -d 600 -L 200 -U 40' --genomeDir $REFERENCE"
+    -c "~/src/utils/align/bwaMemAlign.py --outputDir $BAMDIR --noSampleDir --fastqDir fastq_flash --nCores 2 --params '-O 24,48 -E 1 -A 4 -B 16 -T 70 -k 19 -w 200 -d 600 -L 20 -U 40' --genomeDir $REFERENCE"
 grep "Successfully" FarmOut/align_fastq_flash_amplicon*.txt | wc -l
 grep -iP "Fail|Error|Abort" FarmOut/align_fastq_flash_amplicon*.txt | wc -l
 
@@ -96,3 +96,12 @@ PATH=/software/solexa/pkg/biobambam/2.0.79/bin/:$PATH
 cat flash.not_combined.12_18.tsv | cut -f1 | submitJobs.py --MEM 1000 --ncores 1 -q normal -j bamsort_pe_12_18 -c "python ~/src/utils/bam/bamSortCoord.py --indir $BAMDIR --outdir $BAMDIR --noSampleDir"
 grep "Successfully" FarmOut/bamsort_pe_12_18*.txt | wc -l
 grep -iP "Fail|Error|No such" FarmOut/bamsort_pe_12_18*.txt | wc -l
+
+# I found that mainly reads with large deletions don't seem to be merged. I didn't
+# understand this for a while, but later on I investigated why the deletion profiles
+# for SNP CLU_18 differed in different analyses. I found that FLASH wasn't merging
+# reads when they were in "outie" configuration, which happens when a deletion is
+# large enough that the end of one read goes past the start of the other. Also, if
+# reads go past the end of the amplicon, then they will have insertions added if the
+# alignment parameters are too strict - previously I was basically disallowing
+# soft-clipping by using -L 200 for bwa mem.
