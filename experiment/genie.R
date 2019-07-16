@@ -25,6 +25,7 @@ main = function() {
     make_option(c("--exclude_nonspanning_reads"), type="logical", default=T, action="store_true", help="[default %default]"),
     make_option(c("--exclude_nonspanning_deletions"), type="logical", default=T, action="store_true", help="[default %default]"),
     make_option(c("--ratio_to_total_reads"), type="logical", default=F, action="store_true", help="[default %default]"),
+    make_option(c("--use_cdna_dels_only"), type="logical", default=F, action="store_true", help="[default %default]"),
     make_option(c("--qc_plot_max_udps"), type="integer", default=20, metavar="INT", help="[default %default]"),
     make_option(c("--qc_plot_min_udp_fraction"), type="integer", default=0.005, metavar="FLOAT", help="[default %default]"),
     make_option(c("--qc_plot_exclude_wt"), type="logical", default=T, action="store_true", help="[default %default]"),

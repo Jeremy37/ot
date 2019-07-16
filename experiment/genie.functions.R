@@ -99,6 +99,10 @@ runGenIE = function(option_list)
   if (opt$save_read_data) {
     read_data_list = unlist(lapply(all_results, FUN = function(x) x$read_data),
                             recursive = F)
+    datadir = base::dirname(opt$read_data)
+    if (!dir.exists(datadir)) {
+      dir.create(datadir)
+    }
     saveRDS(read_data_list, file=opt$read_data)
   }
   
@@ -404,6 +408,33 @@ doFullDeletionAnalysis = function(region, replicates.df, read_data = NULL)
     }
   }
   
+  # Determine which UDPs are shared between cDNA and gDNA
+  getSharing = function(types) {
+    if ("cDNA" %in% types) {
+      if ("gDNA" %in% types) {
+        "both"
+      } else {
+        "cDNA only"
+      }
+    } else {
+      if (!"gDNA" %in% types) { stop("Unexpected: neither cDNA nor gDNA among replicate types.") }
+      "gDNA only"
+    }
+  }
+
+  gDNACounts.df = replicate.udp.df %>% filter(type == "gDNA") %>% group_by(udp) %>%
+    summarise(udpcount_gDNA = sum(num_reads))
+  cDNACounts.df = replicate.udp.df %>% filter(type == "cDNA") %>% group_by(udp) %>%
+    summarise(udpcount_cDNA = sum(num_reads))
+  replicate.udp.df = replicate.udp.df %>%
+    left_join(gDNACounts.df, by=c("udp")) %>%
+    left_join(cDNACounts.df, by=c("udp"))
+  threshold = 10
+  replicate.udp.df$udp_sharing = "unclear"
+  replicate.udp.df$udp_sharing[replicate.udp.df$udpcount_gDNA >= threshold & replicate.udp.df$udpcount_cDNA >= threshold] = "both"
+  replicate.udp.df$udp_sharing[replicate.udp.df$udpcount_gDNA > 0 & is.na(replicate.udp.df$udpcount_cDNA)] = "gDNA only"
+  replicate.udp.df$udp_sharing[replicate.udp.df$udpcount_cDNA > 0 & is.na(replicate.udp.df$udpcount_gDNA)] = "cDNA only"
+
   merged.udp.df = summarise(replicate.udp.df %>% group_by(name, type, udp),
                             num_reads = sum(num_reads),
                             is_hdr_allele = first(is_hdr_allele),
@@ -416,7 +447,8 @@ doFullDeletionAnalysis = function(region, replicates.df, read_data = NULL)
                             deletion2_start = first(deletion2_start),
                             deletion2_end = first(deletion2_end),
                             avg_seq_length = mean(avg_seq_length),
-                            avg_mismatch_count = mean(avg_mismatch_count)) %>%
+                            avg_mismatch_count = mean(avg_mismatch_count),
+                            udp_sharing = first(udp_sharing)) %>%
     arrange(-num_reads) %>% ungroup()
   
   # Merged UDPs plot
@@ -432,6 +464,9 @@ doFullDeletionAnalysis = function(region, replicates.df, read_data = NULL)
   delprofile.udp.df$count_udp = 1
   if (opt$custom_del_span) {
     delprofile.udp.df = replicate.udp.df %>% dplyr::mutate(count_udp = ifelse(has_custom_deletion, 1, 0))
+  }
+  if (opt$use_cdna_dels_only) {
+    delprofile.udp.df = delprofile.udp.df %>% dplyr::mutate(count_udp = count_udp & ifelse(udp_sharing == "both", 1, 0))
   }
   p.merged_del_profile = getDeletionProfilePlot(delprofile.udp.df,
                                                 rel_sites,
@@ -692,6 +727,7 @@ doReplicateDeletionAnalysis = function(name, replicate, type, bam_file, sequence
   }
   reads.df = read_data$alignedReads
   
+  cat(sprintf("%d starting cDNA reads\n", sum(reads.df$count)))
   cat(sprintf("%d cDNA reads of %d total (%.1f%%) were soft-clipped\n", read_data$num_softclipped, read_data$num_reads, 100.0 * read_data$num_softclipped / read_data$num_reads))
   cat(sprintf("%d cDNA reads of %d total (%.1f%%) were hard-clipped\n", read_data$num_hardclipped, read_data$num_reads, 100.0 * read_data$num_hardclipped / read_data$num_reads))
   cat(sprintf("%d cDNA reads of %d total (%.1f%%) had insertions\n", read_data$num_insertion, read_data$num_reads, 100.0 * read_data$num_insertion / read_data$num_reads))
@@ -726,13 +762,13 @@ doReplicateDeletionAnalysis = function(name, replicate, type, bam_file, sequence
   reads.df$spanning_read = sapply(reads.df$region_read, FUN=function(s) (substring(s, span_site, span_site) != '-'))
   #reads.df$spanning_read = sapply(reads.df$read_chars, FUN=function(s) (s[span_site] != '-'))
   if (opt$exclude_nonspanning_reads) {
-    stats$reads_excluded_nonspanning = sum(!reads.df$spanning_read * reads.df$count)
+    stats$reads_excluded_nonspanning = sum((!reads.df$spanning_read) * reads.df$count)
     cat(sprintf("%d of %d reads (%.2f%%) excluded due to not spanning the site of interest (position %d)\n",
                 stats$reads_excluded_nonspanning, stats$num_reads, 100.0 * stats$reads_excluded_nonspanning / stats$num_reads,
                 span_site))
     reads.df = reads.df[reads.df$spanning_read, ]
   }
-  
+
   # Exclude reads that don't cover enough of the region of interest
   exclude_for_overlap = (reads.df$seq_length < opt$min_window_overlap)
   stats$reads_excluded_for_minoverlap = sum(exclude_for_overlap * reads.df$count)
@@ -740,7 +776,7 @@ doReplicateDeletionAnalysis = function(name, replicate, type, bam_file, sequence
               stats$reads_excluded_for_minoverlap, stats$num_reads, 100.0 * stats$reads_excluded_for_minoverlap / stats$num_reads,
               opt$min_window_overlap))
   reads.df = reads.df[!exclude_for_overlap, ]
-  
+
   # Identify unique deletion profile (UDP) for each read
   #reads.df$udp = getReadUDPs(reads.df$region_read, wt_profile_chars)
   reads.df$udp = sapply(reads.df$read_chars, FUN=getReadCharsUDP, wt_profile_chars)
@@ -913,7 +949,7 @@ doReplicateDeletionAnalysis = function(name, replicate, type, bam_file, sequence
   
   # Make a table which has just the different versions of the WT and HDR alleles
   wt_hdr.df = NA
-  if (!opt$allele_profile) {
+  if (opt$allele_profile) {
     wt_hdr.reads.df = reads.df %>% dplyr::filter(is_wt_allele | is_hdr_allele)
     #wt_hdr.reads.df$mismatch_profile = getReadMismatchProfiles(wt_hdr.reads.df$region_read, ref_seq_chars)
     wt_hdr.reads.df$mismatch_profile = sapply(wt_hdr.reads.df$read_chars, FUN=getReadCharsMismatchProfile, ref_seq_chars)
@@ -994,12 +1030,16 @@ getRegionReadsFromBam = function(name, replicate, bam_file, chr, start, end, ref
 registerRead = function(relative_pos, sam_cigar, sam_read, region_length) {
   sam_cigar_parsed = parseCigar(sam_cigar)
   read_ok = TRUE
-  read_contains_deletion = FALSE
   read_status = ""
   expanded_cigar = ""
   cigar_bits = ""
   cursor_read = 1
   match_length = 0
+  del_length = 0
+  read_span_to = relative_pos + 1
+  left_softclip_len = 0
+  right_softclip_pos = -1
+  right_softclip_len = 0
   
   for (i in 1:length(sam_cigar_parsed$letters)) {
     type = sam_cigar_parsed$letters[i]
@@ -1009,12 +1049,23 @@ registerRead = function(relative_pos, sam_cigar, sam_read, region_length) {
       cigar_bits[i] = substr(sam_read, cursor_read, cursor_read + sam_cigar_parsed$numbers[i] - 1)
       #expanded_cigar = paste0(expanded_cigar, substr(sam_read, cursor_read, cursor_read + sam_cigar_parsed$numbers[i] - 1))
       cursor_read = cursor_read + sam_cigar_parsed$numbers[i]
+      read_span_to = read_span_to + sam_cigar_parsed$numbers[i]
     }
     else if (type == 'D') {
       cigar_bits[i] = strrep('*', sam_cigar_parsed$numbers[i])
       #expanded_cigar = paste0(expanded_cigar, strrep('*', sam_cigar_parsed$numbers[i]))
-      read_contains_deletion = T
+      del_length = del_length + sam_cigar_parsed$numbers[i]
+      read_span_to = read_span_to + sam_cigar_parsed$numbers[i]
+    } else if (type == 'N') {
+      read_status = "spliced"
+      cigar_bits[i] = strrep('-', sam_cigar_parsed$numbers[i])
     } else if (type == 'S') {
+      if (left_softclip_len > 0) {
+        right_softclip_pos = read_span_to
+        right_softclip_len = sam_cigar_parsed$numbers[i]
+      } else {
+        left_softclip_len = sam_cigar_parsed$numbers[i]
+      }
       cursor_read = cursor_read + sam_cigar_parsed$numbers[i]
       read_status = "softclipped"
     } else if (type == 'H') {
@@ -1050,8 +1101,38 @@ registerRead = function(relative_pos, sam_cigar, sam_read, region_length) {
       registered_read = paste0(registered_read, strrep('-', region_length - len))
     }
   }
+  
+  registered_left_softclip = vector(mode = "integer", length = region_length)
+  registered_right_softclip = vector(mode = "integer", length = region_length)
+  if (left_softclip_len > 0 & relative_pos > 0) {
+    # relative_pos is the read start position relative to the ref sequence, but soft-clipping
+    # occurs to the left of the read start. E.g. relative_pos == 0 means the non-clipped read
+    # sequence starts at the first base of the ref sequence.
+    startpos = relative_pos + 1 - left_softclip_len
+    if (startpos < 1) {
+      left_softclip_len = left_softclip_len - (1 - startpos)
+      startpos = 1
+    }
+    if (startpos + left_softclip_len - 1 > region_length) {
+      left_softclip_len = region_length - startpos + 1
+    }
+    registered_left_softclip[startpos:(startpos + left_softclip_len - 1)] = 1
+  }
+  if (right_softclip_len > 0 & relative_pos < region_length) {
+    startpos = right_softclip_pos
+    if (startpos < 1) {
+      right_softclip_len = right_softclip_len - (1 - startpos)
+      startpos = 1
+    }
+    if (startpos + right_softclip_len - 1 > region_length) {
+      right_softclip_len = region_length - startpos + 1
+    }
+    registered_right_softclip[startpos:(startpos + right_softclip_len - 1)] = 1
+  }
+  
   #print registered_read
-  return(list("read" = registered_read, "read_ok" = read_ok, "read_status" = read_status, "match_length" = match_length, "deletion" = read_contains_deletion))
+  return(list("read" = registered_read, "left_softclip" = registered_left_softclip, "right_softclip" = registered_right_softclip,
+              "read_ok" = read_ok, "read_status" = read_status, "match_length" = match_length, "deletion_length" = del_length))
 }
 
 # this function takes a string cigar "10M20D7M" and converts it to arrays of letters ['M','D','M'] and numbers [10,20,7]
@@ -1180,11 +1261,11 @@ getUDPPlot = function(udp.df, plot_title, sites) {
   if (nrow(udp.df) == 0) {
     return(egg::ggarrange(textPlot("No UDPs to plot."), top=plot_title, draw = F))
   }
-  udp.dels.df = udp.df %>% dplyr::select(deletion_start, deletion_end, deletion2_start, deletion2_end, has_custom_deletion)
+  udp.dels.df = udp.df %>% dplyr::select(deletion_start, deletion_end, deletion2_start, deletion2_end, has_custom_deletion, sharing=udp_sharing)
   udp.dels.df = udp.dels.df %>% arrange(deletion_start, deletion2_start)
   udp.dels.df$y = 1:nrow(udp.dels.df)
-  udp.plot.df = bind_rows(udp.dels.df %>% dplyr::select(y, deletion_start, deletion_end, has_custom_deletion),
-                          udp.dels.df %>% dplyr::select(y, deletion_start=deletion2_start, deletion_end=deletion2_end, has_custom_deletion))
+  udp.plot.df = bind_rows(udp.dels.df %>% dplyr::select(y, deletion_start, deletion_end, has_custom_deletion, sharing),
+                          udp.dels.df %>% dplyr::select(y, deletion_start=deletion2_start, deletion_end=deletion2_end, has_custom_deletion, sharing))
   udp.plot.df = udp.plot.df %>% dplyr::filter(!is.na(deletion_start))
   
   xmax = nchar(udp.df$udp[1])
@@ -1193,11 +1274,21 @@ getUDPPlot = function(udp.df, plot_title, sites) {
     segment_size = 0.3
   }
   simple_theme = theme_bw() + theme(panel.grid.minor = element_line(colour="grey90", size=0.1), panel.grid.major = element_line(colour="grey90", size=0.1))
-  p.udp_dist = ggplot(udp.plot.df) +
-    geom_segment(aes(x = deletion_start, xend = deletion_end, y = y, yend = y, color = has_custom_deletion), size = segment_size) +
-    simple_theme + coord_cartesian(xlim=c(sites$start, sites$end)) + scale_y_reverse() +
-    scale_color_manual(values=c("TRUE"="red", "FALSE"="dodgerblue3"), guide=F) +
-    xlab("Nucleotide position") + ylab("Cumulative UDP count")
+  if (any(udp.plot.df$has_custom_deletion)) {
+    p.udp_dist = ggplot(udp.plot.df) +
+      geom_segment(aes(x = deletion_start, xend = deletion_end, y = y, yend = y, color = has_custom_deletion), size = segment_size) +
+      simple_theme + coord_cartesian(xlim=c(sites$start, sites$end)) + scale_y_reverse() +
+      scale_color_manual(values=c("TRUE"="red", "FALSE"="dodgerblue3")) +
+      theme(legend.position = c(0.25, 0.2), legend.spacing.y = unit(0.1, "cm"), legend.key.height = unit(0.45, "cm")) +
+      xlab("Nucleotide position") + ylab("Cumulative UDP count")
+  } else {
+    p.udp_dist = ggplot(udp.plot.df) +
+      geom_segment(aes(x = deletion_start, xend = deletion_end, y = y, yend = y, color = sharing), size = segment_size) +
+      simple_theme + coord_cartesian(xlim=c(sites$start, sites$end)) + scale_y_reverse() +
+      scale_color_manual(values=c("cDNA only"="red", "gDNA only"="orange", "both"="dodgerblue3", "unclear"="grey")) +
+      theme(legend.position = c(0.25, 0.2), legend.spacing.y = unit(0.1, "cm"), legend.key.height = unit(0.45, "cm")) +
+      xlab("Nucleotide position") + ylab("Cumulative UDP count")
+  }
   
   count.plot.df = data.frame(x=1:xmax)
   udp.char.matrix = str_split_fixed(udp.df$udp, "", n = nchar(udp.df$udp[1]))
@@ -1265,28 +1356,39 @@ getDeletionProfilePlot = function(replicate.udp.df, sites, plot_title = NA, show
     return(egg::ggarrange(textPlot("No UDPs to plot."), top=plot_title, draw = F))
   }
   xmax = nchar(replicate.udp.df$udp[1])
+  #udp.char.matrix = NULL
+  #cur.df = NULL
   # Get the deletion profile for each replicate separately
-  isPositionDel = function(i) {
+  isPositionDel = function(udp.char.matrix, i) {
     (udp.char.matrix[,i] == '*')
   }
-  getDelReadCount = function(i) {
-    # only count deletions in UDPs where count_udp == 1
-    sum(isPositionDel(i) * cur.df$num_reads * cur.df$count_udp)
+  getDelReadCount = function(cur.df, udp.char.matrix, i, filterUdps) {
+    if (filterUdps) {
+      # only count deletions in UDPs where count_udp == 1
+      sum(isPositionDel(udp.char.matrix, i) * cur.df$num_reads * cur.df$count_udp)
+    } else {
+      sum(isPositionDel(udp.char.matrix, i) * cur.df$num_reads)
+    }
   }
+  getDelpctDataframe = function(unique_reps.df, filterUdps=T) {
+    counts.list = list()
+    for (i in 1:nrow(unique_reps.df)) {
+      curType = unique_reps.df[i,]$type
+      curReplicate = unique_reps.df[i,]$replicate
+      count.df = data.frame(x=1:xmax, type = curType, replicate = curReplicate)
+      cur.df = replicate.udp.df %>% dplyr::filter(replicate == curReplicate, type == curType)
+      udp.char.matrix = str_split_fixed(cur.df$udp, "", n = nchar(cur.df$udp[1]))
+      count.df$del_pct = 100 * sapply(count.df$x, FUN=function(i) {getDelReadCount(cur.df, udp.char.matrix, i, filterUdps)}) / sum(cur.df$num_reads)
+      counts.list = c(counts.list, list(count.df))
+    }
+    # Combine deletion profiles for replicates
+    bind_rows(counts.list)
+  }
+  
   unique_reps.df = unique(replicate.udp.df %>% dplyr::select(type, replicate))
-  counts.list = list()
-  for (i in 1:nrow(unique_reps.df)) {
-    curType = unique_reps.df[i,]$type
-    curReplicate = unique_reps.df[i,]$replicate
-    count.df = data.frame(x=1:xmax, type = curType, replicate = curReplicate)
-    cur.df = replicate.udp.df %>% dplyr::filter(replicate == curReplicate, type == curType)
-    udp.char.matrix = str_split_fixed(cur.df$udp, "", n = nchar(cur.df$udp[1]))
-    count.df$del_pct = 100 * sapply(count.df$x, FUN=getDelReadCount) / sum(cur.df$num_reads)
-    counts.list = c(counts.list, list(count.df))
-  }
-  # Combine deletion profiles for replicates
-  delpct.plot.df = bind_rows(counts.list)
+  delpct.plot.df = getDelpctDataframe(unique_reps.df, filterUdps=T)
   delpct.plot.df$replicate = as.character(delpct.plot.df$replicate)
+  delpct.plot.df$type = paste(delpct.plot.df$type, "replicate")
   
   if (show_average) {
     # Merge gDNA replicates together (and similarly for cDNA), and
@@ -1304,7 +1406,7 @@ getDeletionProfilePlot = function(replicate.udp.df, sites, plot_title = NA, show
       count.df = data.frame(x=1:xmax, type = curType)
       cur.df = merged.udp.df %>% dplyr::filter(type == curType)
       udp.char.matrix = str_split_fixed(cur.df$udp, "", n = nchar(cur.df$udp[1]))
-      count.df$del_pct = 100 * sapply(count.df$x, FUN=getDelReadCount) / sum(cur.df$num_reads)
+      count.df$del_pct = 100 * sapply(count.df$x, FUN=function(i) {getDelReadCount(cur.df, udp.char.matrix, i, filterUdps=T)}) / sum(cur.df$num_reads)
       counts.list = c(counts.list, list(count.df))
     }
     merged.delpct.plot.df = bind_rows(counts.list)
@@ -1313,10 +1415,18 @@ getDeletionProfilePlot = function(replicate.udp.df, sites, plot_title = NA, show
     merged.delpct.plot.df$replicate = merged.delpct.plot.df$type
   }
   
-  delpct.plot.df$type = paste(delpct.plot.df$type, "replicate")
-  alpha_values = c(`cDNA average`=0.3, `gDNA average`=0.3, `cDNA replicate`=0.9, `gDNA replicate`=0.9)
-  color_values = c(`cDNA average`="firebrick1", `gDNA average`="dodgerblue3", `cDNA replicate`="red", `gDNA replicate`="blue")
-  size_values = c(`cDNA average`=1.8, `gDNA average`=1.8, `cDNA replicate`=0.3, `gDNA replicate`=0.3)
+  if (any(!replicate.udp.df$count_udp)) {
+    # Make a deletion profile for unfiltered UDPs
+    unique_reps.df = unique(replicate.udp.df %>% dplyr::select(type, replicate))
+    delpct.plot.unfiltered.df = getDelpctDataframe(unique_reps.df, filterUdps=F)
+    delpct.plot.unfiltered.df$replicate = as.character(delpct.plot.unfiltered.df$replicate)
+    delpct.plot.unfiltered.df$type = paste(delpct.plot.unfiltered.df$type, "rep unflt")
+    delpct.plot.df = bind_rows(delpct.plot.df, delpct.plot.unfiltered.df)
+  }
+  
+  alpha_values = c(`cDNA average`=0.3, `gDNA average`=0.3, `cDNA replicate`=0.9, `gDNA replicate`=0.9, `cDNA rep unflt`=0.9, `gDNA rep unflt`=0.9)
+  color_values = c(`cDNA average`="firebrick1", `gDNA average`="dodgerblue3", `cDNA replicate`="red", `gDNA replicate`="blue", `cDNA rep unflt`="orange", `gDNA rep unflt`="turquoise4")
+  size_values = c(`cDNA average`=1.8, `gDNA average`=1.8, `cDNA replicate`=0.3, `gDNA replicate`=0.3, `cDNA rep unflt`=0.3, `gDNA rep unflt`=0.3)
   if (show_average & show_replicates) {
     plot.df = bind_rows(delpct.plot.df, merged.delpct.plot.df)
   } else if (show_average) {
@@ -1327,18 +1437,26 @@ getDeletionProfilePlot = function(replicate.udp.df, sites, plot_title = NA, show
     plot.df = delpct.plot.df
     size_values["cDNA replicate"] = size_values["gDNA replicate"] = 0.4
   }
-  plot.df$type = factor(plot.df$type, levels = c("cDNA average", "gDNA average", "cDNA replicate", "gDNA replicate"))
+  plot.df$type = factor(plot.df$type, levels = c("cDNA average", "gDNA average", "cDNA replicate", "gDNA replicate", "cDNA rep unflt", "gDNA rep unflt"))
+  plot.df$lty_dash = plot.df$type %in% c("cDNA rep unflt", "gDNA rep unflt")
   simple_theme = theme_bw() + theme(panel.grid.minor = element_line(colour="grey90", size=0.1), panel.grid.major = element_line(colour="grey90", size=0.1))
   p.gDNA_cDNA = ggplot() +
-    geom_line(aes(x=x, y=del_pct, color=type, size=type, alpha=type, group=paste(type, replicate)), data = plot.df) +
+    geom_line(aes(x=x, y=del_pct, color=type, size=type, alpha=type, linetype=lty_dash, group=paste(type, replicate)), data = plot.df) +
     simple_theme + xlab("Nucleotide position") + ylab("Deletion frequency (%)") +
     coord_cartesian(xlim=c(sites$start, sites$end)) +
     scale_color_manual(values = color_values) +
     scale_size_manual(values = size_values) +
-    scale_alpha_manual(values = alpha_values)
-  
+    scale_alpha_manual(values = alpha_values) +
+    scale_linetype_manual(values = c("TRUE"="dashed", "FALSE"="solid"), guide=F)
+    
   if (!is.na(plot_title)) {
     p.gDNA_cDNA = p.gDNA_cDNA + ggtitle(plot_title)
+    
+    num_udps = length(unique(replicate.udp.df$udp))
+    included_udps = length(unique(replicate.udp.df %>% filter(count_udp != 0) %>% .$udp))
+    if (included_udps < num_udps) {
+      p.gDNA_cDNA = p.gDNA_cDNA + labs(subtitle=sprintf("%d UDPs included out of %d", included_udps, num_udps))
+    }
   }
   if (!is.na(sites$highlight_site)) {
     p.gDNA_cDNA = p.gDNA_cDNA + geom_vline(xintercept = sites$highlight_site, color="darkgreen", alpha=0.5)
@@ -1735,9 +1853,9 @@ getUNSData = function(replicate.udp.df, replicates.df, sites, region_name, min_g
   getReplicate = function(type_rep) { as.character(sapply(type_rep, FUN=function(x) strsplit(x, "^" , fixed=T)[[1]][2])) }
   replicate.udp.filled.df = replicate.udp.df %>%
     dplyr::mutate(type_replicate = paste(type, replicate, sep="^")) %>%
-    dplyr::select(-name, -replicate, -type, -avg_seq_length, -avg_mismatch_count) %>%
+    dplyr::select(udp, num_reads, is_hdr_allele, is_wt_allele, has_crispr_deletion, deletion_start, deletion_end, type_replicate) %>%
     tidyr::spread(type_replicate, num_reads, fill = 0) %>%
-    tidyr::gather(key="type_replicate", value="num_reads", -(udp:deletion2_end)) %>%
+    tidyr::gather(key="type_replicate", value="num_reads", -(udp:deletion_end)) %>%
     dplyr::mutate(type = getType(type_replicate),
                   replicate = getReplicate(type_replicate)) %>%
     dplyr::select(-type_replicate)
@@ -1964,7 +2082,7 @@ getUNSPlot = function(replicate.udp.df, replicates.df, sites, plot_title, min_gD
     geom_errorbarh(aes(y = y, x = uns, xmin = uns_conf_lo, xmax = uns_conf_hi, height = 0.4), colour = "grey70") +
     geom_point(aes(x = uns, y = y, colour = `cDNA expr`, size = log10(gDNA), alpha = log10(gDNA))) +
     scale_size(range = c(1, maxDotSize)) +
-    scale_color_manual(values=c("red", "blue")) +
+    scale_color_manual(values=c(higher="red", lower="blue")) +
     scale_alpha_continuous(range = c(0.2, 1)) + 
     scale_x_continuous(trans="log2", breaks = c(0.5, 1, 2, 4, 8)) +
     #scale_colour_gradient2(low = "blue", mid = "white", high = "red", midpoint = 1, limits = c(0.1, 4)) +
@@ -1979,7 +2097,7 @@ getUNSPlot = function(replicate.udp.df, replicates.df, sites, plot_title, min_gD
                        panel.border = element_blank(),
                        plot.margin = unit(c(0,0,0.05,0), "cm"))
   
-  p.udp_profile = egg::ggarrange(p.dendro, p.udp, p.uns, nrow=1, ncol=3, widths=c(1,4,1), top = plot_title, draw = F)
+  p.udp_profile = egg::ggarrange(p.dendro, p.udp, p.uns, nrow=1, ncol=3, widths=c(0.6,4,1), top = plot_title, draw = F)
   #p.udp_profile = plot_grid(p.uns, p.udp, p.dendro, nrow=1, ncol=3, rel_widths = c(2,4,1))
   return(p.udp_profile)
 }
