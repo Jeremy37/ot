@@ -23,10 +23,11 @@ registerDoParallel(cl)
 #library(profvis)
 options(stringsAsFactors = F)
 
-#opt = NULL
+opt = NULL
 
 runGenIE = function(option_list)
 {
+  opt_in = option_list
   opt <<- option_list
   
   cat("All options:\n")
@@ -39,6 +40,13 @@ runGenIE = function(option_list)
   if (!is.null(opt$del_span_start) & !is.null(opt$del_span_end)) {
     opt$custom_del_span <<- T
   }
+  
+  if (!opt$deletion_analysis & !opt$grep_analysis) {
+    stop("One of the options 'deletion_analysis' and 'grep_analysis' must be specified.")
+  }
+  
+  if (is.null(opt$grep_window_left)) { opt$grep_window_left <<- opt$grep_window }
+  if (is.null(opt$grep_window_right)) { opt$grep_window_right <<- opt$grep_window }
   
   regions.df = readr::read_tsv(opt$regions, col_types="cciiiiccc")
   if (any(duplicated(regions.df$name))) {
@@ -60,8 +68,10 @@ runGenIE = function(option_list)
   
   read_data = NULL
   opt$save_read_data <<- F
+  opt$save_read_data <- F
   if (!is.null(opt$read_data)) {
     opt$save_read_data <<- !file.exists(opt$read_data)
+    opt$save_read_data <- !file.exists(opt$read_data)
     if (file.exists(opt$read_data)) {
       cat(sprintf("Loading read data from file: %s", opt$read_data))
       read_data = readRDS(opt$read_data)
@@ -69,7 +79,8 @@ runGenIE = function(option_list)
   }
   
   all_region_plots = list()
-  all_results = list()
+  del_results = list()
+  grep_results = list()
   region_index = 1
   #profvis({
   for (region_name in region_names) {
@@ -79,129 +90,163 @@ runGenIE = function(option_list)
     } else if (nrow(df) == 0) {
       stop("Internal error.")
     }
-    cur_region = as.list(df[1,])
     cur_replicates.df = replicates.df %>% dplyr::filter(name == region_name)
     if (nrow(cur_replicates.df) == 0) {
       warning(sprintf("No replicates found for region %s", region_name))
       next
     }
-    result = doFullDeletionAnalysis(region = cur_region, replicates.df = cur_replicates.df, read_data)
+    cur_region = as.list(df[1,])
+    
+    result = doFullRegionAnalysis(locus_name = region_name, region = cur_region, replicates.df = cur_replicates.df, read_data)
     result$region = region_name
     result$replicate.df = cur_replicates.df
     
-    all_results[[region_index]] = result
-    all_region_plots[[region_index]] = result$plot_list
+    grep_results[[region_index]] = result$grep_res
+    del_results[[region_index]] = result$del_res
+    all_region_plots[[region_index]] = list()
+    if (!is.null(result$grep_res)) {
+      all_region_plots[[region_index]] = list(grep_stats = result$grep_res$p.stats)
+    }
+    if (!is.null(result$grep_res)) {
+      all_region_plots[[region_index]] = c(all_region_plots[[region_index]], result$del_res$plot_list)
+    }
     region_index = region_index + 1
   }
   #})
   
-  # Save read_data object if the option is set
-  if (opt$save_read_data) {
-    read_data_list = unlist(lapply(all_results, FUN = function(x) x$read_data),
-                            recursive = F)
-    datadir = base::dirname(opt$read_data)
-    if (!dir.exists(datadir)) {
-      dir.create(datadir)
+  # Also write out a summary of stats per region, rather than per replicate
+  #hdr_prop_error_pval = lapply(del_results, function(res) res$stats.df)
+  getListItemField = function(l, fieldList) {
+    for (field in fieldList) {
+      l = l[[field]]
+      if (is.null(l)) {
+        break
+      }
     }
-    saveRDS(read_data_list, file=opt$read_data)
+    if (is.null(l)) {NA} else {l}
   }
   
-  if (opt$allele_profile) {
-    df = bind_rows(lapply(all_results, function(res) res$wt_hdr.df))
-    fname = sprintf("%s.mismatch_profile.tsv", opt$out)
-    write.table(df, fname, quote=F, row.names=F, col.names=T, na="", sep="\t")
-  }
-  if (!opt$no_udp_profile) {
-    df = bind_rows(lapply(all_results, function(res) res$replicate.udp.df))
-    fname = sprintf("%s.replicate_udps.tsv", opt$out)
-    write.table(df, fname, quote=F, row.names=F, col.names=T, na="", sep="\t")
+  grep.summary.df = NULL
+  if (opt$grep_analysis) {
+    grep_stats.df = bind_rows(lapply(grep_results, function(res) res$stats.df))
+    fname = sprintf("%s.grep_analysis.replicate_stats.tsv", opt$out)
+    write.table(grep_stats.df, fname, quote=F, row.names=F, col.names=T, na="", sep="\t")
     
-    df = bind_rows(lapply(all_results, function(res) res$merged.udp.df))
-    fname = sprintf("%s.merged_udps.tsv", opt$out)
-    write.table(df, fname, quote=F, row.names=F, col.names=T, na="", sep="\t")
+    grep.summary.df = data.frame(
+      name = region_names,
+      hdr.rate          = sapply(grep_results, FUN = function(res) getListItemField(res, c("stats.summary", "mean_hdr_rate"))),
+      hdr.pval          = sapply(grep_results, FUN = function(res) getListItemField(res, c("stats.summary", "hdr_wt.res", "pval"))),
+      hdr.effect        = sapply(grep_results, FUN = function(res) getListItemField(res, c("stats.summary", "hdr_wt.res", "effect"))),
+      hdr.effect_sd     = sapply(grep_results, FUN = function(res) getListItemField(res, c("stats.summary", "hdr_wt.res", "effect_sd"))),
+      hdr.effect_confint_lo = sapply(grep_results, FUN = function(res) getListItemField(res, c("stats.summary", "hdr_wt.res", "effect_confint_lo"))),
+      hdr.effect_confint_hi = sapply(grep_results, FUN = function(res) getListItemField(res, c("stats.summary", "hdr_wt.res", "effect_confint_hi")))
+    )
+    fname = sprintf("%s.grep_analysis.region_stats.tsv", opt$out)
+    write.table(grep.summary.df, fname, quote=F, row.names=F, col.names=T, sep="\t")
   }
-  if (!opt$no_uns_profile) {
-    df = bind_rows(lapply(all_results, function(res) res$uns.df))
-    fname = sprintf("%s.uns.tsv", opt$out)
-    write.table(df, fname, quote=F, row.names=F, col.names=T, na="", sep="\t")
+  
+  if (opt$deletion_analysis) {
+    # Save read_data object if the option is set
+    if (opt$save_read_data) {
+      read_data_list = unlist(lapply(del_results, FUN = function(x) x$read_data),
+                              recursive = F)
+      datadir = base::dirname(opt$read_data)
+      if (!dir.exists(datadir)) {
+        dir.create(datadir)
+      }
+      saveRDS(read_data_list, file=opt$read_data)
+    }
+    
+    if (opt$allele_profile) {
+      df = bind_rows(lapply(del_results, function(res) res$wt_hdr.df))
+      fname = sprintf("%s.mismatch_profile.tsv", opt$out)
+      write.table(df, fname, quote=F, row.names=F, col.names=T, na="", sep="\t")
+    }
+    if (!opt$no_udp_profile) {
+      df = bind_rows(lapply(del_results, function(res) res$replicate.udp.df))
+      fname = sprintf("%s.replicate_udps.tsv", opt$out)
+      write.table(df, fname, quote=F, row.names=F, col.names=T, na="", sep="\t")
+      
+      df = bind_rows(lapply(del_results, function(res) res$merged.udp.df))
+      fname = sprintf("%s.merged_udps.tsv", opt$out)
+      write.table(df, fname, quote=F, row.names=F, col.names=T, na="", sep="\t")
+    }
+    if (!opt$no_uns_profile) {
+      df = bind_rows(lapply(del_results, function(res) res$uns.df))
+      fname = sprintf("%s.uns.tsv", opt$out)
+      write.table(df, fname, quote=F, row.names=F, col.names=T, na="", sep="\t")
+    }
+    if (!opt$no_site_profile) {
+      df = bind_rows(lapply(del_results, function(res) res$site.profiles.df))
+      fname = sprintf("%s.site_profiles.tsv", opt$out)
+      write.table(df, fname, quote=F, row.names=F, col.names=T, na="", sep="\t")
+    }
   }
-  if (!opt$no_site_profile) {
-    df = bind_rows(lapply(all_results, function(res) res$site.profiles.df))
-    fname = sprintf("%s.site_profiles.tsv", opt$out)
-    write.table(df, fname, quote=F, row.names=F, col.names=T, na="", sep="\t")
-  }
-  stats_plot = NULL
-  if (!opt$no_stats) {
-    stats.df = bind_rows(lapply(all_results, function(res) res$stats.df))
+  
+  stats_plot_del = NULL
+  del.summary.df = NULL
+  if (!opt$no_stats & opt$deletion_analysis) {
+    stats.df = bind_rows(lapply(del_results, function(res) res$stats.df))
     fname = sprintf("%s.replicate_stats.tsv", opt$out)
     write.table(stats.df, fname, quote=F, row.names=F, col.names=T, na="", sep="\t")
     
-    # Also write out a summary of stats per region, rather than per replicate
-    #hdr_prop_error_pval = lapply(all_results, function(res) res$stats.df)
-    getListItemField = function(l, fieldList) {
-      for (field in fieldList) {
-        l = l[[field]]
-        if (is.null(l)) {
-          break
-        }
-      }
-      if (is.null(l)) {NA} else {l}
-    }
-    stats.summary.df = data.frame(
+    del.summary.df = data.frame(
       name = region_names,
-      hdr.rate          = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "mean_hdr_rate"))),
-      del.rate          = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "mean_del_rate"))),
-      editing.rate      = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "mean_edit_rate"))),
-      hdr.error_prop.pval      = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "hdr_wt.error_prop.res", "pval"))),
-      hdr.error_prop.effect    = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "hdr_wt.error_prop.res", "effect"))),
-      hdr.error_prop.effect_sd = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "hdr_wt.error_prop.res", "effect_sd"))),
-      hdr.error_prop.effect_confint_lo = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "hdr_wt.error_prop.res", "effect_confint_lo"))),
-      hdr.error_prop.effect_confint_hi = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "hdr_wt.error_prop.res", "effect_confint_hi"))),
-      del.error_prop.pval      = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.error_prop.res", "pval"))),
-      del.error_prop.effect    = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.error_prop.res", "effect"))),
-      del.error_prop.effect_sd = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.error_prop.res", "effect_sd"))),
-      del.error_prop.effect_confint_lo = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.error_prop.res", "effect_confint_lo"))),
-      del.error_prop.effect_confint_hi = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.error_prop.res", "effect_confint_hi"))),
-      del.2bp.error_prop.pval      = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.2bp.error_prop.res", "pval"))),
-      del.2bp.error_prop.effect    = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.2bp.error_prop.res", "effect"))),
-      del.2bp.error_prop.effect_sd = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.2bp.error_prop.res", "effect_sd"))),
-      del.2bp.error_prop.effect_confint_lo = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.2bp.error_prop.res", "effect_confint_lo"))),
-      del.2bp.error_prop.effect_confint_hi = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.2bp.error_prop.res", "effect_confint_hi"))),
-      del.10bp.error_prop.pval      = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.10bp.error_prop.res", "pval"))),
-      del.10bp.error_prop.effect    = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.10bp.error_prop.res", "effect"))),
-      del.10bp.error_prop.effect_sd = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.10bp.error_prop.res", "effect_sd"))),
-      del.10bp.error_prop.effect_confint_lo = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.10bp.error_prop.res", "effect_confint_lo"))),
-      del.10bp.error_prop.effect_confint_hi = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.10bp.error_prop.res", "effect_confint_hi"))),
-      del.20bp.error_prop.pval      = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.20bp.error_prop.res", "pval"))),
-      del.20bp.error_prop.effect    = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.20bp.error_prop.res", "effect"))),
-      del.20bp.error_prop.effect_sd = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.20bp.error_prop.res", "effect_sd"))),
-      del.20bp.error_prop.effect_confint_lo = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.20bp.error_prop.res", "effect_confint_lo"))),
-      del.20bp.error_prop.effect_confint_hi = sapply(all_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.20bp.error_prop.res", "effect_confint_hi")))
+      hdr.rate          = sapply(del_results, FUN = function(res) getListItemField(res, c("stats.summary", "mean_hdr_rate"))),
+      del.rate          = sapply(del_results, FUN = function(res) getListItemField(res, c("stats.summary", "mean_del_rate"))),
+      editing.rate      = sapply(del_results, FUN = function(res) getListItemField(res, c("stats.summary", "mean_edit_rate"))),
+      hdr.pval          = sapply(del_results, FUN = function(res) getListItemField(res, c("stats.summary", "hdr_wt.res", "pval"))),
+      hdr.effect        = sapply(del_results, FUN = function(res) getListItemField(res, c("stats.summary", "hdr_wt.res", "effect"))),
+      hdr.effect_sd     = sapply(del_results, FUN = function(res) getListItemField(res, c("stats.summary", "hdr_wt.res", "effect_sd"))),
+      hdr.effect_confint_lo = sapply(del_results, FUN = function(res) getListItemField(res, c("stats.summary", "hdr_wt.res", "effect_confint_lo"))),
+      hdr.effect_confint_hi = sapply(del_results, FUN = function(res) getListItemField(res, c("stats.summary", "hdr_wt.res", "effect_confint_hi"))),
+      del.pval          = sapply(del_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.res", "pval"))),
+      del.effect        = sapply(del_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.res", "effect"))),
+      del.effect_sd     = sapply(del_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.res", "effect_sd"))),
+      del.effect_confint_lo = sapply(del_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.res", "effect_confint_lo"))),
+      del.effect_confint_hi = sapply(del_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.res", "effect_confint_hi"))),
+      del.2bp.pval      = sapply(del_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.2bp.res", "pval"))),
+      del.2bp.effect    = sapply(del_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.2bp.res", "effect"))),
+      del.2bp.effect_sd = sapply(del_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.2bp.res", "effect_sd"))),
+      del.2bp.effect_confint_lo = sapply(del_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.2bp.res", "effect_confint_lo"))),
+      del.2bp.effect_confint_hi = sapply(del_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.2bp.res", "effect_confint_hi"))),
+      del.10bp.pval      = sapply(del_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.10bp.res", "pval"))),
+      del.10bp.effect    = sapply(del_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.10bp.res", "effect"))),
+      del.10bp.effect_sd = sapply(del_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.10bp.res", "effect_sd"))),
+      del.10bp.effect_confint_lo = sapply(del_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.10bp.res", "effect_confint_lo"))),
+      del.10bp.effect_confint_hi = sapply(del_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.10bp.res", "effect_confint_hi"))),
+      del.20bp.pval      = sapply(del_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.20bp.res", "pval"))),
+      del.20bp.effect    = sapply(del_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.20bp.res", "effect"))),
+      del.20bp.effect_sd = sapply(del_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.20bp.res", "effect_sd"))),
+      del.20bp.effect_confint_lo = sapply(del_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.20bp.res", "effect_confint_lo"))),
+      del.20bp.effect_confint_hi = sapply(del_results, FUN = function(res) getListItemField(res, c("stats.summary", "del_wt.20bp.res", "effect_confint_hi")))
     )
     fname = sprintf("%s.region_stats.tsv", opt$out)
-    write.table(stats.summary.df, fname, quote=F, row.names=F, col.names=T, sep="\t")
-    
-    stats_plot = statsSummaryPlot(stats.summary.df, HDR_rate_plot=T)
+    write.table(del.summary.df, fname, quote=F, row.names=F, col.names=T, sep="\t")
   }
+
+  stats_summary_plot = statsSummaryPlot(grep.summary.df, del.summary.df)
   
-  settings.df = data.frame(setting=names(opt), value=as.character(opt)) %>%
-    filter(setting %in% c("minMapQ", "max_mismatch_frac", "viewing_window", "editing_window", "min_window_overlap",
+  #"regions", "replicates", "out", "read_data", 
+  settings.df = data.frame(setting=names(opt_in), value=as.character(opt_in)) %>%
+    filter(setting %in% c("grep_analysis", "grep_window", "grep_window_left", "grep_window_right",
+                          "deletion_analysis", "minMapQ", "max_mismatch_frac", "viewing_window", "editing_window", "min_window_overlap",
                           "exclude_multiple_deletions", "exclude_nonspanning_reads", "exclude_nonspanning_deletions",
                           "ratio_to_total_reads", "qc_plot_max_udps", "qc_plot_min_udp_fraction", "qc_plot_exclude_wt",
                           "del_span_start", "del_span_end", "uns_plot_min_gDNA", "uns_plot_min_cDNA", "uns_plot_max_udps"))
   ggThemeBlank = theme_bw() + theme(panel.grid = element_blank(), axis.text = element_blank(), axis.title = element_blank(), axis.ticks = element_blank(), panel.border = element_blank())
-  myTableTheme <- gridExtra::ttheme_default(core = list(fg_params=list(cex = 0.75)),
+  myTableTheme <- gridExtra::ttheme_default(core = list(fg_params=list(cex = 0.70)),
                                             colhead = list(fg_params=list(cex = 0.8)),
                                             rowhead = list(fg_params=list(cex = 0.8)))
   settingsPlot = ggplot(data.frame(x=1:10, y=1:10), aes(x,y)) + geom_blank() + ggThemeBlank +
-    annotation_custom(tableGrob(settings.df, theme = myTableTheme), xmin=1, xmax=9, ymin=1, ymax=9) +
+    annotation_custom(tableGrob(settings.df, theme = myTableTheme, rows = NULL), xmin=1, xmax=9, ymin=1, ymax=10) +
     ggtitle("CRISPR editing analysis settings")
   
   varcomp_plots = NULL
-  if (opt$variance_analysis) {
+  if (opt$variance_analysis & opt$deletion_analysis) {
     varcomp_plots = list()
     # Do variance components analysis across all regions together
-    all_replicates.udp.df = bind_rows(lapply(all_results, FUN = function(res) getListItemField(res, c("replicate.udp.df"))))
+    all_replicates.udp.df = bind_rows(lapply(del_results, FUN = function(res) getListItemField(res, c("replicate.udp.df"))))
     #if (length(unique(all_replicates.udp.df$name)) > 1) {
       varcomp = getVarianceComponents(replicate.udp.df = all_replicates.udp.df,
                                       replicates.df = replicates.df %>% dplyr::filter(name %in% regions.df$name),
@@ -241,146 +286,325 @@ runGenIE = function(option_list)
   fname = sprintf("%s.plots.pdf", opt$out)
   pdf(file = fname, width = opt$plot_width, height = opt$plot_height)
   print(settingsPlot)
-  if (!is.null(stats_plot)) { print(stats_plot) }
+  if (!is.null(stats_summary_plot)) { print(stats_summary_plot) }
   print(all_region_plots)
   if (!is.null(varcomp_plots)) { print(varcomp_plots) }
   dev.off()
 }
 
 
-statsSummaryPlot = function(stats.summary.df, HDR_rate_plot = FALSE) {
-  exp_names = sapply(stats.summary.df$name, FUN = function(s) strsplit(s, ",", T)[[1]][1])
-  if (any(duplicated(exp_names))) {
-    exp_names = stats.summary.df$name
-  }
-  stats.summary.df$name = factor(as.character(exp_names), levels=exp_names)
-  
+statsSummaryPlot = function(grep.summary.df, stats.summary.df) {
   getSignificanceStr = function(pval) {
     if (is.na(pval) | pval >= 0.01) { "p >= 0.01" }
     else if (pval < 0.001) { "p < 0.001" }
     else { "p < 0.01" }
   }
-  stats.summary.df$hdr_significance = factor(sapply(stats.summary.df$hdr.error_prop.pval, FUN = getSignificanceStr), levels=c("p >= 0.01", "p < 0.01", "p < 0.001"))
   
-  p.stats.effect = ggplot(stats.summary.df, aes(x=name, y=hdr.error_prop.effect, fill=hdr_significance)) +
-    geom_bar(stat = "identity", width=0.5) + 
-    geom_errorbar(aes(ymin = hdr.error_prop.effect_confint_lo, ymax = hdr.error_prop.effect_confint_hi),
-                  width = 0.2, col = "grey30") +
-    geom_hline(yintercept = 1, col = "red") +
-    theme_bw(10) + theme(axis.text.x = element_blank(),
-                         legend.title = element_blank(),
-                         axis.title.x = element_blank(),
-                         plot.margin = unit(c(0.1, 0, 0.1 ,1), "cm")) +
-    ylab("HDR effect size") + ggtitle("HDR effect size") +
-    scale_fill_manual(values=c(`p >= 0.01`="grey70", `p < 0.01`="cornflowerblue", `p < 0.001`="red3")) +
-    coord_cartesian(ylim = c(0, max(1, max(stats.summary.df$hdr.error_prop.effect * 1.05, na.rm = T))))
+  p.grep.effect = NULL
+  p.stats.effect = NULL
+  effect_size_theme = theme_bw(10) + theme(axis.text.x = element_blank(),
+                                           legend.title = element_blank(),
+                                           axis.title.x = element_blank(),
+                                           plot.margin = unit(c(0.1, 0, 0.1 ,1), "cm"))
+  if (!is.null(grep.summary.df)) {
+    exp_names = sapply(grep.summary.df$name, FUN = function(s) strsplit(s, ",", T)[[1]][1])
+    if (any(duplicated(exp_names))) {
+      exp_names = grep.summary.df$name
+    }
+    grep.summary.df$name = factor(as.character(exp_names), levels=exp_names)
+    grep.summary.df$hdr_significance = factor(sapply(grep.summary.df$hdr.pval, FUN = getSignificanceStr), levels=c("p >= 0.01", "p < 0.01", "p < 0.001"))
+    
+    p.grep.effect = ggplot(grep.summary.df, aes(x=name, y=hdr.effect, fill=hdr_significance)) +
+      geom_bar(stat = "identity", width=0.5) + 
+      geom_errorbar(aes(ymin = hdr.effect_confint_lo, ymax = hdr.effect_confint_hi),
+                    width = 0.2, col = "grey30") +
+      geom_hline(yintercept = 1, col = "red") +
+      effect_size_theme +
+      ylab("HDR effect size") + ggtitle("HDR effect size - grep analysis") +
+      scale_fill_manual(values=c(`p >= 0.01`="grey70", `p < 0.01`="cornflowerblue", `p < 0.001`="red3")) +
+      coord_cartesian(ylim = c(0, max(1, max(grep.summary.df$hdr.effect * 1.05, na.rm = T))))
+    
+    hdr.df = grep.summary.df
+  }
   
-  stats.summary.df$del_significance = factor(sapply(stats.summary.df$del.error_prop.pval, FUN = getSignificanceStr), levels=c("p >= 0.01", "p < 0.01", "p < 0.001"))
-  p.stats.del = ggplot(stats.summary.df, aes(x=name, y=del.error_prop.effect, fill=del_significance)) +
-    geom_bar(stat = "identity", width=0.5) + 
-    geom_errorbar(aes(ymin = del.error_prop.effect_confint_lo, ymax = del.error_prop.effect_confint_hi),
-                  width = 0.2, col = "grey30") +
-    geom_hline(yintercept = 1, col = "red") +
-    theme_bw(10) + theme(axis.text.x = element_blank(),
-                         legend.title = element_blank(),
-                         axis.title.x = element_blank(),
-                         plot.margin = unit(c(0.1, 0, 0.1 ,1), "cm")) +
-    ylab("Del effect size") + ggtitle("Deletion effect size") +
-    scale_fill_manual(values=c(`p >= 0.01`="grey70", `p < 0.01`="cornflowerblue", `p < 0.001`="red3")) +
-    coord_cartesian(ylim = c(0, min(3, max(stats.summary.df$del.error_prop.effect * 1.2, na.rm = T))))
+  if (!is.null(stats.summary.df)) {
+    exp_names = sapply(stats.summary.df$name, FUN = function(s) strsplit(s, ",", T)[[1]][1])
+    if (any(duplicated(exp_names))) {
+      exp_names = stats.summary.df$name
+    }
+    stats.summary.df$name = factor(as.character(exp_names), levels=exp_names)
+    stats.summary.df$hdr_significance = factor(sapply(stats.summary.df$hdr.pval, FUN = getSignificanceStr), levels=c("p >= 0.01", "p < 0.01", "p < 0.001"))
+    
+    p.stats.effect = ggplot(stats.summary.df, aes(x=name, y=hdr.effect, fill=hdr_significance)) +
+      geom_bar(stat = "identity", width=0.5) + 
+      geom_errorbar(aes(ymin = hdr.effect_confint_lo, ymax = hdr.effect_confint_hi),
+                    width = 0.2, col = "grey30") +
+      geom_hline(yintercept = 1, col = "red") +
+      effect_size_theme +
+      ylab("HDR effect size") + ggtitle("HDR effect size - alignment deletion analysis") +
+      scale_fill_manual(values=c(`p >= 0.01`="grey70", `p < 0.01`="cornflowerblue", `p < 0.001`="red3")) +
+      coord_cartesian(ylim = c(0, max(1, max(stats.summary.df$hdr.effect * 1.05, na.rm = T))))
+    
+    stats.summary.df$del_significance = factor(sapply(stats.summary.df$del.pval, FUN = getSignificanceStr), levels=c("p >= 0.01", "p < 0.01", "p < 0.001"))
+    p.stats.del = ggplot(stats.summary.df, aes(x=name, y=del.effect, fill=del_significance)) +
+      geom_bar(stat = "identity", width=0.5) + 
+      geom_errorbar(aes(ymin = del.effect_confint_lo, ymax = del.effect_confint_hi),
+                    width = 0.2, col = "grey30") +
+      geom_hline(yintercept = 1, col = "red") +
+      effect_size_theme +
+      ylab("Del effect size") + ggtitle("Deletion effect size") +
+      scale_fill_manual(values=c(`p >= 0.01`="grey70", `p < 0.01`="cornflowerblue", `p < 0.001`="red3")) +
+      coord_cartesian(ylim = c(0, min(3, max(stats.summary.df$del.effect * 1.2, na.rm = T))))
+    
+    plot.df = stats.summary.df %>% dplyr::select(name, HDR=hdr.rate, NHEJ=del.rate) %>%
+      tidyr::gather(key = "type", value = "value", -name)
+    plot.df$type = factor(as.character(plot.df$type), levels = c("NHEJ", "HDR"))
+    p.stats.editing = ggplot(plot.df, aes(x=name, y=value*100, fill=type)) +
+      geom_bar(stat = "identity", position = position_stack(), width=0.5) + 
+      theme_bw(10) + theme(axis.text.x = element_blank(),
+                           legend.title = element_blank(),
+                           axis.title.x = element_blank(),
+                           plot.margin = unit(c(0.1, 0, 0.1 ,1), "cm")) +
+      ylab("% editing") + ggtitle("Editing rates") +
+      scale_fill_manual(values=c(HDR="darkorange", NHEJ="cornflowerblue"))
+    
+    hdr.df = stats.summary.df
+  }
   
-  plot.df = stats.summary.df %>% dplyr::select(name, HDR=hdr.rate, NHEJ=del.rate) %>%
-    tidyr::gather(key = "type", value = "value", -name)
-  plot.df$type = factor(as.character(plot.df$type), levels = c("NHEJ", "HDR"))
-  p.stats.editing = ggplot(plot.df, aes(x=name, y=value*100, fill=type)) +
+  hdr.df$type = "HDR"
+  p.stats.hdr = ggplot(hdr.df, aes(x=name, y=hdr.rate * 100, fill=type)) +
     geom_bar(stat = "identity", position = position_stack(), width=0.5) + 
     theme_bw(10) + theme(axis.text.x = element_text(angle = 37, hjust = 1, size=7),
                          legend.title = element_blank(),
                          axis.title.x = element_blank(),
                          plot.margin = unit(c(0.1, 0, 0.1 ,1), "cm")) +
-    ylab("% editing") + ggtitle("Editing rates") +
+    ylab("% HDR") + ggtitle("HDR rates") +
     scale_fill_manual(values=c(HDR="darkorange", NHEJ="cornflowerblue"))
   
   p.title = ggdraw() + draw_label("Experiment summary", fontface='bold')
-  
-  if (HDR_rate_plot) {
-    p.stats.hdr = ggplot(plot.df %>% filter(type == "HDR"), aes(x=name, y=value*100, fill=type)) +
-      geom_bar(stat = "identity", position = position_stack(), width=0.5) + 
-      theme_bw(10) + theme(axis.text.x = element_text(angle = 37, hjust = 1, size=7),
-                           legend.title = element_blank(),
-                           axis.title.x = element_blank(),
-                           plot.margin = unit(c(0.1, 0, 0.1 ,1), "cm")) +
-      ylab("% HDR") + ggtitle("HDR rates") +
-      scale_fill_manual(values=c(HDR="darkorange", NHEJ="cornflowerblue"))
-    p.res = egg::ggarrange(p.title, p.stats.effect, p.stats.del, p.stats.editing, p.stats.hdr, ncol=1, heights=c(1.2,3,3,3,3), draw = F)
+  if (!is.null(p.grep.effect) & !is.null(p.stats.effect)) {
+    p.res = egg::ggarrange(p.title, p.grep.effect, p.stats.effect, p.stats.del, p.stats.editing, p.stats.hdr, ncol=1, heights=c(1.2,2.4,2.4,2.4,2.4,2.4), draw = F)
+  } else if (!is.null(p.grep.effect)) {
+    p.res = egg::ggarrange(p.title, p.grep.effect, p.stats.del, p.stats.editing, p.stats.hdr, ncol=1, heights=c(1.2,3,3,3,3), draw = F)
   } else {
-    p.res = egg::ggarrange(p.title, p.stats.effect, p.stats.del, p.stats.editing, ncol=1, heights=c(1,3,3,3), draw = F)
+    p.res = egg::ggarrange(p.title, p.stats.effect, p.stats.del, p.stats.editing, p.stats.hdr, ncol=1, heights=c(1.2,3,3,3,3), draw = F)
   }
   p.res
 }
 
 
-doFullDeletionAnalysis = function(region, replicates.df, read_data = NULL)
+doFullRegionAnalysis = function(locus_name, region, replicates.df, read_data = NULL)
 {
   if (nrow(replicates.df) < 1) {
-    stop(sprintf("doFullDeletionAnalysis: No replicates specified for region %s.", region$name))
+    stop(sprintf("doFullRegionAnalysis: No replicates specified for region %s.", region$name))
   }
-  replicate_list = list()
-  replicate_udps = list()
-  replicate_plots = list()
-  replicate_site_profiles = list()
-  replicate_wt_hdr = list()
   # stats_list = list()
-  locus_name = region$name
   sites = list(start = region$start,
                end = region$end,
                highlight_site = region$highlight_site,
                cut_site = region$cut_site)
   rel_sites = getRelativeSites(sites, opt$viewing_window)
+  
+  replicate_grep_analyses = list()
+  replicate_del_analyses = list()
   for (i in 1:nrow(replicates.df)) {
-    result = doReplicateDeletionAnalysis(name = locus_name,
-                                         replicate = replicates.df[i,]$replicate,
-                                         type = replicates.df[i,]$type,
-                                         bam_file = replicates.df[i,]$bam,
-                                         sequence_name = region$sequence_name,
-                                         sites = sites,
-                                         hdr_profile = str_to_upper(region$hdr_allele_profile),
-                                         wt_profile = str_to_upper(region$wt_allele_profile),
-                                         ref_sequence = str_to_upper(region$ref_sequence),
-                                         read_data_all = read_data)
-    result$name = locus_name
-    result$replicate = replicates.df[i,]$replicate
-    result$type = replicates.df[i,]$type
-    replicate_list[[i]] = result
+    bam_file = replicates.df[i,]$bam
+    replicate = replicates.df[i,]$replicate
+    type = replicates.df[i,]$type
+    hdr_profile = str_to_upper(region$hdr_allele_profile)
+    wt_profile = str_to_upper(region$wt_allele_profile)
+    ref_sequence = str_to_upper(region$ref_sequence)
     
-    #stats_list[[i]] = result$stats
+    cat(sprintf("\n\nAnalysing region %s, replicate %s, file %s, %s:%d-%d, highlight site %d, cut site %d\n",
+                locus_name, replicate, bam_file, region$sequence_name, sites$start, sites$end, sites$highlight_site, sites$cut_site))
+    cat(sprintf("HDR allele: %s\n", hdr_profile))
+    cat(sprintf("WT allele:  %s\n", wt_profile))
+    cat(sprintf("REF sequence: %s\n", ref_sequence))
     
-    if (!opt$no_site_profile) {
-      replicate_site_profiles[[i]] = result$sites.profile.df %>% dplyr::mutate(name = locus_name,
-                                                                               replicate = replicates.df[i,]$replicate,
-                                                                               type = replicates.df[i,]$type) %>%
-        dplyr::select(name, replicate, type, everything())
-    }
-    if (opt$allele_profile) {
-      replicate_wt_hdr[[i]] = result$wt_hdr.df %>% dplyr::mutate(name = locus_name,
-                                                                 replicate = replicates.df[i,]$replicate,
-                                                                 type = replicates.df[i,]$type) %>%
-        dplyr::select(name, replicate, type, everything()) %>%
-        dplyr::arrange(-num_reads)
+    sam_reads = NULL
+    if (opt$grep_analysis | (opt$deletion_analysis & !opt$grep_analysis & !is.null(read_data))) {
+      sam_reads = getRegionReadsFromBam(locus_name, replicate, bam_file, region$sequence_name, sites$start, sites$end, ref_sequence)
+      if (length(sam_reads) <= 0) {
+        cat(sprintf("\nERROR: No reads retrieved at the specified region for replicate %s from file %s\n", replicate, bam_file))
+        stop()
+      }
     }
     
-    replicate_udps[[i]] = result$udp.df %>% dplyr::mutate(name = locus_name,
-                                                          replicate = replicates.df[i,]$replicate,
-                                                          type = replicates.df[i,]$type) %>%
-      dplyr::select(name, replicate, type, everything())
+    if (opt$grep_analysis) {
+      result = doReplicateGrepAnalysis(sam_reads = sam_reads,
+                                       hdr_profile = hdr_profile,
+                                       wt_profile = wt_profile,
+                                       ref_sequence = ref_sequence)
+      result$name = locus_name
+      result$replicate = replicate
+      result$type = type
+      result$num_reads = length(sam_reads)
+      replicate_grep_analyses[[i]] = result
+    }
+    
+    if (opt$deletion_analysis) {
+      result = doReplicateDeletionAnalysis(name = locus_name, replicate = replicate, type = type,
+                                           sam_reads = sam_reads, sites = sites,
+                                           hdr_profile = hdr_profile,
+                                           wt_profile = wt_profile,
+                                           ref_sequence = ref_sequence,
+                                           read_data_all = read_data)
+      result$name = locus_name
+      result$replicate = replicate
+      result$type = type
+      replicate_del_analyses[[i]] = result
+    }
   }
   
-  if (!opt$allele_profile) {
+  grep_res = del_res = NULL
+  if (opt$grep_analysis) {
+    counts.df = bind_rows(replicate_grep_analyses) %>%
+      dplyr::select(name, replicate, type, num_reads, everything())
+    grep_res = doRegionGrepAnalysis(counts.df, replicates.df)
+  }
+  if (opt$deletion_analysis) {
+    del_res = doRegionDeletionAnalysis(replicate_del_analyses, replicates.df, rel_sites, locus_name)
+  }
+  return(list(grep_res = grep_res, del_res = del_res))
+}
+
+
+doRegionGrepAnalysis = function(counts.df, replicates.df) {
+  stats.df = counts.df %>% rename(num_hdr_reads = hdr_read_count, num_wt_reads = wt_read_count)
+  stats.df$HDR_WT_ratio = stats.df$num_hdr_reads / stats.df$num_wt_reads
+  stats.df$HDR_rate = stats.df$num_hdr_reads / stats.df$num_reads
+  stats.df$WT_rate = stats.df$num_wt_reads / stats.df$num_reads
+  
+  # Summary of stats from the propagation of errors method
+  hdr_ratio_res = NULL
+  method = ""
+  stats.gDNA = stats.df %>% filter(type == "gDNA")
+  stats.cDNA = stats.df %>% filter(type == "cDNA")
+
+  if (nrow(stats.gDNA) < 2 | nrow(stats.cDNA) < 2) {
+    summary.left = sprintf("Unable to calculate stats with < 2 replicates")
+    summary.right = ""
+  } else {
+    denom = "num_wt_reads"
+    ratioTo = "WT"
+    if (opts$ratio_to_total_reads) {
+      denom = "num_reads"
+      ratioTo = "N_tot"
+    }
+    
+    confIntervalString = function(ratioRes) {
+      sprintf("95%% CI: (%.3g, %.3g)", ratioRes$effect_confint_lo, ratioRes$effect_confint_hi)
+    }
+    hdr_ratio_res = getUDPRatioEstimate(stats.df, replicates.df, numerator = "num_hdr_reads", denominator = denom,
+                                        batchCol = opt$batch_col, randomEffectsCols = opt$random_effects_cols)
+    hdr.conf.interval.str = confIntervalString(hdr_ratio_res)
+    hdr.summary = sprintf("cDNA:gDNA ratio (HDR/%s): %.3g\n%s,    p = %.3g",
+                          ratioTo, hdr_ratio_res$effect, hdr.conf.interval.str, hdr_ratio_res$pval)
+    method = sprintf("Method: %s", hdr_ratio_res$method)
+    
+    hdr.rate.str = sprintf("Mean HDR rate gDNA: %.2g%%,  cDNA: %.2g%%", mean(stats.gDNA$HDR_rate) * 100, mean(stats.cDNA$HDR_rate) * 100)
+    wt.rate.str = sprintf("Mean WT rate gDNA: %.2g%%,  cDNA: %.2g%%", mean(stats.gDNA$WT_rate) * 100, mean(stats.cDNA$WT_rate) * 100)
+    summary.left = paste(hdr.rate.str, wt.rate.str, sep = "\n")
+    summary.right = paste(method, hdr.summary, sep = "\n")
+  }
+  
+  # Convert to strings for nice printing (with 3 significant digits)
+  stats.plot.df = stats.df %>%
+    dplyr::select(replicate, type, num_reads, "HDR reads" = num_hdr_reads, "WT reads" = num_wt_reads, HDR_WT_ratio, HDR_rate, WT_rate)
+  stats.plot.df$HDR_WT_ratio = sprintf("%.3g", stats.plot.df$HDR_WT_ratio)
+  stats.plot.df$HDR_rate = sprintf("%.2f%%", 100 * stats.plot.df$HDR_rate)
+  stats.plot.df$WT_rate = sprintf("%.2f%%", 100 * stats.plot.df$WT_rate)
+  ggThemeBlank = theme_bw() + theme(panel.grid = element_blank(), axis.text = element_blank(), axis.title = element_blank(), axis.ticks = element_blank(), panel.border = element_blank())
+  
+  mycex = min(0.70, 0.75 * 11 / nrow(stats.plot.df))
+  myTableTheme <- gridExtra::ttheme_default(core = list(fg_params=list(cex = mycex)),
+                                            colhead = list(fg_params=list(cex = mycex)),
+                                            rowhead = list(fg_params=list(cex = mycex)),
+                                            padding = unit(c(2, 4), "mm"))
+  # p.stats = ggplot(data.frame(x=1:10, y=1:10), aes(x,y)) + geom_blank() + ggThemeBlank +
+  #   annotation_custom(tableGrob(t(stats.plot.df), theme = myTableTheme), xmin=1.2, xmax=10, ymin=1, ymax=8) +
+  #   annotate("text", x=5, y=10, label = sprintf("%s grep summary", stats.df$name[1]), vjust = 1, fontface = 2, size = 5) +
+  #   annotate("text", x=1, y=9.3, label = summary.left.prop, vjust = 1, hjust = 0, size = 3.1)
+  plot_title = sprintf("%s grep summary", stats.df$name[1])
+  p.stats = ggplot(data.frame(x=1:10, y=1:10), aes(x,y)) + geom_blank() + ggThemeBlank +
+    annotation_custom(tableGrob(t(stats.plot.df), theme = myTableTheme), xmin=1.2, xmax=10, ymin=1, ymax=8.5) +
+    annotate("text", x=1, y=10, label = summary.left, vjust = 1, hjust = 0, size = 2.9) +
+    annotate("text", x=9.5, y=10, label = summary.right, vjust = 1, hjust = 1, size = 2.9)
+  
+  color_values = c(`cDNA`="firebrick1", `cDNA outlier`="orange1", `gDNA`="dodgerblue3", `gDNA outlier`="turquoise1")
+  p1 = ggplot(stats.df, aes(x=replicate, y=num_reads, fill=type)) +
+    geom_bar(stat = "identity", alpha = 0.8) +
+    geom_text(aes(label = sprintf("%d", num_reads)), size = 2.4, position = position_stack(vjust = 0.5)) +
+    theme_bw(10) + theme(axis.text.x=element_blank(), legend.title=element_blank(), axis.title.x = element_blank()) +
+    scale_fill_manual(values = color_values) +
+    ylab("Number of reads") +
+    ggtitle("Number of reads")
+  
+  p2 = ggplot(stats.df, aes(x=replicate, y=HDR_WT_ratio, fill=type)) +
+    geom_bar(stat = "identity", alpha = 0.8) +
+    geom_text(aes(label = sprintf("%.3g", HDR_WT_ratio)), size = 2.4, position = position_stack(vjust = 0.5)) +
+    theme_bw(10) + theme(axis.text.x = element_text(angle = 30, hjust = 1), legend.title=element_blank()) +
+    scale_fill_manual(values = color_values, guide=F) +
+    ylab("HDR:WT ratio") +
+    ggtitle("HDR:WT ratio")
+  
+  p.title = ggdraw() + draw_label(plot_title, fontface='bold')
+  #p.replicate_qc = plot_grid(p.udp_fractions, p.udp_avg_deviation, ncol=1)
+  #p.res = plot_grid(p.title, p.replicate_qc, ncol=1, rel_heights=c(0.1, 1)) # rel_heights values control title margins
+  p.res = egg::ggarrange(p.title, p.stats, p1, p2, ncol=1, heights=c(0.5, 4.5, 1.5, 1.5), draw = F)
+  
+  stats.summary = list(mean_hdr_rate = mean(stats.gDNA$HDR_rate),
+                       mean_wt_rate = mean(stats.gDNA$WT_rate),
+                       hdr_wt.res = hdr_ratio_res,
+                       error_prop.summary = summary.left.prop)
+  
+  result_list = list(p.stats = p.res,
+                     stats.df = stats.df,
+                     stats.summary = stats.summary)
+}
+
+
+doReplicateGrepAnalysis = function(sam_reads, hdr_profile, wt_profile, ref_sequence) {
+  # Get sequences from full sam_read entries
+  sam_seqs = vector(mode = "character", length = length(sam_reads)) # Preallocate a vector of discarded reads
+  for (i in 1:length(sam_reads)) {
+    line_split = strsplit(sam_reads[i], "\t", fixed = T)[[1]]
+    sam_seqs[i] = line_split[10]
+  }
+  hdr_profile_chars = strsplit(hdr_profile, "")[[1]]
+  wt_profile_chars = strsplit(wt_profile, "")[[1]]
+  ref_seq_chars = strsplit(ref_sequence, "")[[1]]
+  
+  getGrepSequence = function(profile_chars, ref_chars) {
+    profile_is_letter = isDNALetter(profile_chars)
+    char_positions = which(profile_is_letter)
+    minpos = max(1, min(char_positions) - opt$grep_window_left)
+    maxpos = min(length(ref_chars), max(char_positions) + opt$grep_window_right)
+    grep_chars = ref_chars
+    grep_chars[profile_is_letter] = profile_chars[profile_is_letter]
+    paste(grep_chars[minpos:maxpos], collapse = "")
+  }
+  hdr_seq = getGrepSequence(hdr_profile_chars, ref_seq_chars)
+  wt_seq = getGrepSequence(wt_profile_chars, ref_seq_chars)
+  
+  hdr_read_count = sum(sapply(sam_seqs, FUN = function(s) grepl(hdr_seq, s, fixed=T)))
+  wt_read_count = sum(sapply(sam_seqs, FUN = function(s) grepl(wt_seq, s, fixed=T)))
+  return(list(hdr_read_count = hdr_read_count, wt_read_count = wt_read_count))
+}
+
+
+doRegionDeletionAnalysis = function(replicate_del_analyses, replicates.df, rel_sites, locus_name) {
+  site.profiles.df = NULL
+  wt_hdr.df = NULL
+  
+  if (opt$allele_profile) {
+    replicate_wt_hdr = lapply(replicate_del_analyses, FUN = function(res) res$wt_hdr.df)
     wt_hdr.df = bind_rows(replicate_wt_hdr)
   }
   
   if (!opt$no_site_profile) {
     # Make a table of the "site profiles" - combinations of alleles at sites of interest
+    replicate_site_profiles = lapply(replicate_del_analyses, FUN = function(res) res$sites.profile.df)
     site.profiles.df = bind_rows(replicate_site_profiles)
     site.profiles.df$replicate = as.character(site.profiles.df$replicate)
     # Combine replicates and add merged counts as a replicate named "all"
@@ -393,11 +617,13 @@ doFullDeletionAnalysis = function(region, replicates.df, read_data = NULL)
       dplyr::arrange(replicate, type, sites_profile)
   }
   
-  stats_res = getFullReplicateStats(replicate_list, rel_sites, replicates.df)
+  stats_res = getFullReplicateStats(replicate_del_analyses, rel_sites, replicates.df)
   
   # Merge together results from all replicates
+  replicate_udps = lapply(replicate_del_analyses, FUN = function(res) res$udp.df)
   replicate.udp.df = bind_rows(replicate_udps)
   
+  replicate_plots = list()
   if (!opt$no_replicate_plots) {
     for (i in 1:nrow(replicates.df)) {
       cur_replicate = replicates.df[i,]$replicate
@@ -452,7 +678,7 @@ doFullDeletionAnalysis = function(region, replicates.df, read_data = NULL)
     arrange(-num_reads) %>% ungroup()
   
   # Merged UDPs plot
-  region_title = sprintf("%s merged replicates", region$name)
+  region_title = sprintf("%s deletion alleles", locus_name)
   p.udp_gDNA = getUDPPlot(merged.udp.df %>% dplyr::filter(type == "gDNA"), plot_title="gDNA", sites=rel_sites)
   p.udp_cDNA = getUDPPlot(merged.udp.df %>% dplyr::filter(type == "cDNA"), plot_title="cDNA", sites=rel_sites)
   p.title = ggdraw() + draw_label(region_title, fontface='bold')
@@ -468,18 +694,18 @@ doFullDeletionAnalysis = function(region, replicates.df, read_data = NULL)
   if (opt$use_cdna_dels_only) {
     delprofile.udp.df = delprofile.udp.df %>% dplyr::mutate(count_udp = count_udp & ifelse(udp_sharing == "both", 1, 0))
   }
-  p.merged_del_profile = getDeletionProfilePlot(delprofile.udp.df,
+  p.del_profile_pct = getDeletionProfilePlot(delprofile.udp.df,
                                                 rel_sites,
-                                                plot_title = "Merged replicates",
-                                                show_average = T, show_replicates = F)
-  p.merged_del_profile = p.merged_del_profile + theme(axis.title.x=element_blank())
-  p.replicate_del_profile = getDeletionProfilePlot(delprofile.udp.df,
+                                                plot_title = "Relative to all reads",
+                                                show_average = T, show_replicates = T, ratioToWT = F)
+  p.del_profile_pct = p.del_profile_pct + theme(axis.title.x=element_blank())
+  p.del_profile_wtratio = getDeletionProfilePlot(delprofile.udp.df,
                                                    rel_sites,
-                                                   plot_title = "Individual replicates",
-                                                   show_average = T, show_replicates = T)
-  del_profile_title = sprintf("%s %s", region$name, ifelse(opt$custom_del_span, " custom dels only", ""))
+                                                   plot_title = "Relative to WT",
+                                                   show_average = T, show_replicates = T, ratioToWT = T)
+  del_profile_title = sprintf("%s deletion profile %s", locus_name, ifelse(opt$custom_del_span, "\ncustom dels only", ""))
   p.del_profile = egg::ggarrange(ggdraw() + draw_label(del_profile_title, fontface='bold'),
-                                 p.merged_del_profile, p.replicate_del_profile, 
+                                 p.del_profile_pct, p.del_profile_wtratio, 
                                  ncol=1, heights=c(0.1, 0.5, 0.5), draw = F)
   
   replicate_qc_plots = list(p1 = NULL, p2 = NULL)
@@ -491,7 +717,7 @@ doFullDeletionAnalysis = function(region, replicates.df, read_data = NULL)
     replicate_qc_plots = getReplicateQCPlots(stats.df = stats_res$stats.df,
                                              replicate.udp.fractions.df = qc_metrics$replicate.udp.fractions.df,
                                              min_avg_udp_fraction = opt$qc_plot_min_udp_fraction,
-                                             region_title = region$name)
+                                             region_title = locus_name)
   }
   
   # UNS plot
@@ -506,8 +732,8 @@ doFullDeletionAnalysis = function(region, replicates.df, read_data = NULL)
   uns.df = NULL
   uns.replicates.df = NULL
   if (!is.null(uns_res)) {
-    uns.df = uns_res$udp.dels.df %>% dplyr::mutate(name = region$name) %>% dplyr::select(name, everything())
-    uns.replicates.df = uns_res$replicate.dels.df %>% dplyr::mutate(name = region$name) %>% dplyr::select(name, everything())
+    uns.df = uns_res$udp.dels.df %>% dplyr::mutate(name = locus_name) %>% dplyr::select(name, everything())
+    uns.replicates.df = uns_res$replicate.dels.df %>% dplyr::mutate(name = locus_name) %>% dplyr::select(name, everything())
   }
   
   p.variance_components = NULL
@@ -525,7 +751,7 @@ doFullDeletionAnalysis = function(region, replicates.df, read_data = NULL)
   p.power = NULL
   p.replicate_allocation = NULL
   if (opt$power_analysis) {
-    power_plots = getPowerPlots(replicate.udp.df, replicates.df, titlestr = region$name, min_udp_total_count = opt$variance_analysis_min_count)
+    power_plots = getPowerPlots(replicate.udp.df, replicates.df, titlestr = locus_name, min_udp_total_count = opt$variance_analysis_min_count)
     p.variance_fit = power_plots$cv_plots
     p.power = power_plots$power
     p.replicate_allocation = power_plots$replicate_allocation
@@ -543,10 +769,10 @@ doFullDeletionAnalysis = function(region, replicates.df, read_data = NULL)
                    replicate_allocation = p.replicate_allocation,
                    replicate_plots = replicate_plots)
   
-  read_data = lapply(replicate_list, FUN = function(x) x$read_data)
+  read_data = lapply(replicate_del_analyses, FUN = function(x) x$read_data)
   names(read_data) = paste(replicates.df$name, replicates.df$replicate, replicates.df$type, sep="_")
   
-  result_list = list(replicate_list = replicate_list,
+  result_list = list(replicate_list = replicate_del_analyses,
                      plot_list = plot_list,
                      replicate.udp.df = replicate.udp.df,
                      merged.udp.df = merged.udp.df,
@@ -562,13 +788,14 @@ doFullDeletionAnalysis = function(region, replicates.df, read_data = NULL)
 
 ######################################################################################
 
-getFullReplicateStats = function(replicate_list, rel_sites, replicates.df) {
-  stats.df = bind_rows(lapply(replicate_list, function(res) as.data.frame(res$stats)))
+getFullReplicateStats = function(replicate_del_analyses, rel_sites, replicates.df) {
+  stats.df = bind_rows(lapply(replicate_del_analyses, function(res) as.data.frame(res$stats)))
   stats.df$HDR_WT_ratio = (stats.df$num_hdr_reads / stats.df$num_wt_reads)
   stats.df$DEL_WT_ratio = (stats.df$num_deletion_reads / stats.df$num_wt_reads)
   stats.df$HDR_rate = stats.df$num_hdr_reads / stats.df$num_kept_reads
   stats.df$DEL_rate = stats.df$num_deletion_reads / stats.df$num_kept_reads
   stats.df$editing_rate = stats.df$num_edit_reads / stats.df$num_kept_reads
+  stats.df$WT_rate = stats.df$num_wt_reads / stats.df$num_kept_reads
   
   # Summary of stats from the propagation of errors method
   hdr_ratio_res = NULL
@@ -578,15 +805,16 @@ getFullReplicateStats = function(replicate_list, rel_sites, replicates.df) {
   del_ratio_res_20bp = NULL
   del_ratio_res_custom = NULL
   method = ""
-  num_cDNA = sum(stats.df$type == "cDNA")
-  num_gDNA = sum(stats.df$type == "gDNA")
-  if (num_cDNA < 2 | num_gDNA < 2) {
+  stats.gDNA = stats.df %>% filter(type == "gDNA")
+  stats.cDNA = stats.df %>% filter(type == "cDNA")
+  hdr.rate = sprintf("Mean HDR rate gDNA: %.2g%%,  cDNA: %.2g%%", mean(stats.gDNA$HDR_rate) * 100, mean(stats.cDNA$HDR_rate) * 100)
+  del.rate = sprintf("Mean DEL rate gDNA: %.2g%%,  cDNA: %.2g%%", mean(stats.gDNA$DEL_rate) * 100, mean(stats.cDNA$DEL_rate) * 100)
+  wt.rate = sprintf("Mean WT rate gDNA: %.2g%%,  cDNA: %.2g%%", mean(stats.gDNA$WT_rate) * 100, mean(stats.cDNA$WT_rate) * 100)
+
+  if (nrow(stats.gDNA) < 2 | nrow(stats.cDNA) < 2) {
     summary.left.prop = sprintf("Unable to calculate stats with < 2 replicates")
     summary.right.prop = ""
   } else {
-    hdr.rate = sprintf("Mean HDR rate (gDNA): %.2g%%", mean(stats.df %>% filter(type == "gDNA") %>% .$HDR_rate * 100))
-    del.rate = sprintf("Mean DEL rate (gDNA): %.2g%%", mean(stats.df %>% filter(type == "gDNA") %>% .$DEL_rate * 100))
-    
     denom = "num_wt_reads"
     ratioTo = "WT"
     if (opts$ratio_to_total_reads) {
@@ -603,7 +831,7 @@ getFullReplicateStats = function(replicate_list, rel_sites, replicates.df) {
                                ratioTo, hdr_ratio_res$effect, hdr.conf.interval.str, hdr_ratio_res$pval)
     method = sprintf("\nMethod: %s", hdr_ratio_res$method)
 
-    summary.left.prop = paste(hdr.rate, del.rate, method, hdr.summary.prop, sep = "\n")
+    summary.left.prop = paste(hdr.rate, del.rate, wt.rate, method, hdr.summary.prop, sep = "\n")
     
     del_ratio_res = getUDPRatioEstimate(stats.df, replicates.df, numerator = "num_deletion_reads", denominator = denom, batchCol = opt$batch_col, randomEffectsCols = opt$random_effects_cols)
     del.conf.interval.str = confIntervalString(del_ratio_res)
@@ -636,12 +864,13 @@ getFullReplicateStats = function(replicate_list, rel_sites, replicates.df) {
   
   # Convert to strings for nice printing (with 3 significant digits)
   stats.plot.df = stats.df %>% dplyr::select(replicate, type, num_udps, HDR_WT_ratio, DEL_WT_ratio,
-                                             HDR_rate, DEL_rate, editing_rate, num_reads, num_hdr_reads, num_wt_reads,
-                                             num_deletion_reads, reads_excluded_for_minoverlap, reads_excluded_for_mismatches,
+                                             HDR_rate, DEL_rate, editing_rate, WT_rate, num_reads, num_hdr_reads, num_wt_reads,
+                                             num_deletion_reads, num_insertion, reads_excluded_for_minoverlap, reads_excluded_for_mismatches,
                                              reads_excluded_nonspanning, reads_excluded_for_multiple_deletions)
   stats.plot.df = stats.plot.df %>% dplyr::rename("HDR reads" = num_hdr_reads,
                                                   "WT reads" = num_wt_reads,
                                                   "Deletion reads" = num_deletion_reads,
+                                                  "excluded-insertion" = num_insertion,
                                                   "excluded-minoverlap" = reads_excluded_for_minoverlap,
                                                   "excluded-mismatches" = reads_excluded_for_mismatches,
                                                   "excluded-nonspanning" = reads_excluded_nonspanning,
@@ -651,38 +880,32 @@ getFullReplicateStats = function(replicate_list, rel_sites, replicates.df) {
   stats.plot.df$HDR_rate = sprintf("%.2f%%", 100 * stats.plot.df$HDR_rate)
   stats.plot.df$DEL_rate = sprintf("%.2f%%", 100 * stats.plot.df$DEL_rate)
   stats.plot.df$editing_rate = sprintf("%.2f%%", 100 * stats.plot.df$editing_rate)
+  stats.plot.df$WT_rate = sprintf("%.2f%%", 100 * stats.plot.df$WT_rate)
   ggThemeBlank = theme_bw() + theme(panel.grid = element_blank(), axis.text = element_blank(), axis.title = element_blank(), axis.ticks = element_blank(), panel.border = element_blank())
   
-  mycex = 0.8
-  if (ncol(stats.plot.df) > 12) { mycex = 0.6 }
+  mycex = min(0.70, 0.75 * 11 / nrow(stats.plot.df))
   myTableTheme <- gridExtra::ttheme_default(core = list(fg_params=list(cex = mycex)),
                                             colhead = list(fg_params=list(cex = mycex)),
                                             rowhead = list(fg_params=list(cex = mycex)),
-                                            padding = unit(c(2, 4), "mm"))
+                                            padding = unit(c(2, 3), "mm"))
   p.stats = ggplot(data.frame(x=1:10, y=1:10), aes(x,y)) + geom_blank() + ggThemeBlank +
-    annotation_custom(tableGrob(t(stats.plot.df), theme = myTableTheme), xmin=2, xmax=10, ymin=1, ymax=8) +
-    annotate("text", x=5, y=10, label = sprintf("%s summary", stats.df$name[1]), vjust = 1, fontface = 2, size = 5) +
-    annotate("text", x=1, y=9.3, label = summary.left.prop, vjust = 1, hjust = 0, size = 3.1) +
-    annotate("text", x=9.5, y=9.3, label = summary.right.prop, vjust = 1, hjust = 1, size = 3.1)
+    annotation_custom(tableGrob(t(stats.plot.df), theme = myTableTheme), xmin=1.2, xmax=10, ymin=1, ymax=8) +
+    annotate("text", x=5, y=10, label = sprintf("%s analysis summary", stats.df$name[1]), vjust = 1, fontface = 2, size = 5) +
+    annotate("text", x=1, y=9.4, label = summary.left.prop, vjust = 1, hjust = 0, size = 2.9) +
+    annotate("text", x=9.5, y=9.4, label = summary.right.prop, vjust = 1, hjust = 1, size = 2.9)
   if (!opt$no_stats) {
     p.stats = p.stats + annotate("text", x=1, y=1, label = "Data saved in *.replicate_stats.tsv", vjust = 1, hjust = 0, size = 3)
   }
   
-  stats.df$HDR_WT_ratio = (stats.df$num_hdr_reads / stats.df$num_wt_reads)
-  stats.df$DEL_WT_ratio = (stats.df$num_deletion_reads / stats.df$num_wt_reads)
-  stats.df$HDR_rate = stats.df$num_hdr_reads / stats.df$num_kept_reads
-  stats.df$DEL_rate = stats.df$num_deletion_reads / stats.df$num_kept_reads
-  stats.df$editing_rate = stats.df$num_edit_reads / stats.df$num_kept_reads
-  
-  stats.summary = list(mean_hdr_rate = mean(stats.df %>% dplyr::filter(type == "gDNA") %>% .$HDR_rate),
-                       mean_del_rate = mean(stats.df %>% dplyr::filter(type == "gDNA") %>% .$DEL_rate),
-                       mean_edit_rate = mean(stats.df %>% dplyr::filter(type == "gDNA") %>% .$editing_rate),
-                       hdr_wt.error_prop.res = hdr_ratio_res,
-                       del_wt.error_prop.res = del_ratio_res,
-                       del_wt.2bp.error_prop.res = del_ratio_res_2bp,
-                       del_wt.10bp.error_prop.res = del_ratio_res_10bp,
-                       del_wt.20bp.error_prop.res = del_ratio_res_20bp,
-                       del_wt.custom.error_prop.res = del_ratio_res_custom,
+  stats.summary = list(mean_hdr_rate = mean(stats.gDNA$HDR_rate),
+                       mean_del_rate = mean(stats.gDNA$DEL_rate),
+                       mean_edit_rate = mean(stats.gDNA$editing_rate),
+                       hdr_wt.res = hdr_ratio_res,
+                       del_wt.res = del_ratio_res,
+                       del_wt.2bp.res = del_ratio_res_2bp,
+                       del_wt.10bp.res = del_ratio_res_10bp,
+                       del_wt.20bp.res = del_ratio_res_20bp,
+                       del_wt.custom.res = del_ratio_res_custom,
                        error_prop.summary = paste(summary.left.prop, summary.right.prop, sep = "\n"))
   
   result_list = list(p.stats = p.stats,
@@ -693,35 +916,25 @@ getFullReplicateStats = function(replicate_list, rel_sites, replicates.df) {
 
 ######################################################################################
 
-doReplicateDeletionAnalysis = function(name, replicate, type, bam_file, sequence_name, sites, hdr_profile, wt_profile, ref_sequence, read_data_all = NULL)
+doReplicateDeletionAnalysis = function(name, replicate, type, sam_reads, sites, hdr_profile, wt_profile, ref_sequence, read_data_all = NULL)
 {
-  cat(sprintf("\n\nAnalysing region %s, replicate %s, file %s, %s:%d-%d, highlight site %d, cut site %d\n",
-              name, replicate, bam_file, sequence_name, sites$start, sites$end, sites$highlight_site, sites$cut_site))
-  cat(sprintf("HDR allele: %s\n", hdr_profile))
-  cat(sprintf("WT allele:  %s\n", wt_profile))
-  cat(sprintf("REF sequence: %s\n", ref_sequence))
   stats = list(name = name, replicate = replicate, type = type)
   
   region_length = (sites$end - sites$start + 1)
   if (nchar(wt_profile) != region_length) {
     stop(sprintf("The WT allele profile given has length %d, but the region size (end - start + 1) is %d", nchar(wt_profile), region_length))
   }
-  
   if (is.na(hdr_profile)) {
     hdr_profile = ""
   }
   
   replicate_name = paste(name, replicate, type, sep="_")
   if (is.null(read_data_all)) {
-    read_data = getRegionReadsFromBam(name, replicate, bam_file, sequence_name, sites$start, sites$end, ref_sequence)
-    if (is.null(read_data)) {
-      cat(sprintf("\nERROR: No reads retrieved at the specified region for replicate %s from file %s\n", replicate_name, bam_file))
-      stop()
-    }
+    read_data = getAlignedReads(sam_reads, ref_sequence, sites$start, sites$end)
   } else {
     read_data = read_data_all[[replicate_name]]
     if (is.null(read_data)) {
-      cat(sprintf("\nERROR: Failed to get read data for replicate %s from file %s\n", replicate_name, opt$read_data))
+      cat(sprintf("\nERROR: Failed to get read data for replicate %s from file %s\n", replicate, opt$read_data))
       stop()
     }
   }
@@ -917,6 +1130,8 @@ doReplicateDeletionAnalysis = function(name, replicate, type, bam_file, sequence
                      has_multiple_deletions = first(has_multiple_deletions),
                      avg_seq_length = mean(seq_length),
                      avg_mismatch_count = mean(mismatch_count)) %>%
+    mutate(name = name, replicate = replicate, type = type) %>%
+    select(name, replicate, type, everything()) %>%
     arrange(-num_reads)
   stats$num_udps = nrow(udp.df)
   
@@ -948,7 +1163,7 @@ doReplicateDeletionAnalysis = function(name, replicate, type, bam_file, sequence
   #udp.df$deletion_length = sapply(udp_dels, FUN=function(x) x[2]-x[1]+1)
   
   # Make a table which has just the different versions of the WT and HDR alleles
-  wt_hdr.df = NA
+  wt_hdr.df = NULL
   if (opt$allele_profile) {
     wt_hdr.reads.df = reads.df %>% dplyr::filter(is_wt_allele | is_hdr_allele)
     #wt_hdr.reads.df$mismatch_profile = getReadMismatchProfiles(wt_hdr.reads.df$region_read, ref_seq_chars)
@@ -960,18 +1175,22 @@ doReplicateDeletionAnalysis = function(name, replicate, type, bam_file, sequence
                           spanning_read = first(spanning_read),
                           is_wt_allele = first(is_wt_allele),
                           is_hdr_allele = first(is_hdr_allele)) %>%
+      mutate(name = locus_name, replicate = replicate, type = type) %>%
+      dplyr::select(name, replicate, type, everything()) %>%
       dplyr::arrange(-num_reads)
   }
   
   # Make a table which has all variations of read sequences at the "profile" sites,
   # i.e. those sites used to identify WT and HDR alleles
-  sites.profile.df = NA
+  sites.profile.df = NULL
   if (!opt$no_site_profile) {
     #reads.df$sites_profile = getReadSiteProfiles(reads.df$region_read, wt_profile_chars)
     profile_positions = which(isDNALetter(wt_profile_chars))
     reads.df$sites_profile = sapply(reads.df$region_read, FUN=getReadSiteProfile, profile_positions)
     sites.profile.df = reads.df %>% group_by(sites_profile) %>%
-      summarise(count = sum(count))
+      summarise(count = sum(count))  %>%
+      mutate(name = locus_name, replicate = replicate, type = type) %>%
+      dplyr::select(name, replicate, type, everything())
   }
   return(list(udp.df = udp.df, wt_hdr.df = wt_hdr.df, sites.profile.df = sites.profile.df, stats = stats, read_data = read_data))
 }
@@ -1013,11 +1232,7 @@ getRegionReadsFromBam = function(name, replicate, bam_file, chr, start, end, ref
   #cmd = "samtools view " + alignmentFlag + mapqFlag + subsampleStr + bam_file + " " + regionStr + " | head -n 50"
   cat(paste0("Calling:\n", cmd, "\n"))
   sam_reads = system(cmd, intern=TRUE)
-  read_data = NULL
-  if (length(sam_reads) > 0) {
-    read_data = getAlignedReads(sam_reads, ref_sequence, start, end)
-  }
-  return(read_data)
+  return(sam_reads)
 }
 
 
@@ -1348,7 +1563,7 @@ getUDPPlot = function(udp.df, plot_title, sites) {
   return(p.full)
 }
 
-getDeletionProfilePlot = function(replicate.udp.df, sites, plot_title = NA, show_average = T, show_replicates = T) {
+getDeletionProfilePlot = function(replicate.udp.df, sites, plot_title = NA, show_average = T, show_replicates = T, ratioToWT = F) {
   if (!show_average & !show_replicates) {
     stop("getDeletionProfilePlot: One of show_average and show_replicates should be true.")
   }
@@ -1370,7 +1585,7 @@ getDeletionProfilePlot = function(replicate.udp.df, sites, plot_title = NA, show
       sum(isPositionDel(udp.char.matrix, i) * cur.df$num_reads)
     }
   }
-  getDelpctDataframe = function(unique_reps.df, filterUdps=T) {
+  getDelpctDataframe = function(unique_reps.df, filterUdps = T, ratioToWT = F) {
     counts.list = list()
     for (i in 1:nrow(unique_reps.df)) {
       curType = unique_reps.df[i,]$type
@@ -1378,7 +1593,12 @@ getDeletionProfilePlot = function(replicate.udp.df, sites, plot_title = NA, show
       count.df = data.frame(x=1:xmax, type = curType, replicate = curReplicate)
       cur.df = replicate.udp.df %>% dplyr::filter(replicate == curReplicate, type == curType)
       udp.char.matrix = str_split_fixed(cur.df$udp, "", n = nchar(cur.df$udp[1]))
-      count.df$del_pct = 100 * sapply(count.df$x, FUN=function(i) {getDelReadCount(cur.df, udp.char.matrix, i, filterUdps)}) / sum(cur.df$num_reads)
+      if (ratioToWT) {
+        wtCount = sum(cur.df$is_wt_allele * cur.df$num_reads)
+        count.df$del_pct = sapply(count.df$x, FUN=function(i) {getDelReadCount(cur.df, udp.char.matrix, i, filterUdps)}) / wtCount
+      } else {
+        count.df$del_pct = 100 * sapply(count.df$x, FUN=function(i) {getDelReadCount(cur.df, udp.char.matrix, i, filterUdps)}) / sum(cur.df$num_reads)
+      }
       counts.list = c(counts.list, list(count.df))
     }
     # Combine deletion profiles for replicates
@@ -1386,7 +1606,7 @@ getDeletionProfilePlot = function(replicate.udp.df, sites, plot_title = NA, show
   }
   
   unique_reps.df = unique(replicate.udp.df %>% dplyr::select(type, replicate))
-  delpct.plot.df = getDelpctDataframe(unique_reps.df, filterUdps=T)
+  delpct.plot.df = getDelpctDataframe(unique_reps.df, filterUdps=T, ratioToWT=ratioToWT)
   delpct.plot.df$replicate = as.character(delpct.plot.df$replicate)
   delpct.plot.df$type = paste(delpct.plot.df$type, "replicate")
   
@@ -1397,7 +1617,7 @@ getDeletionProfilePlot = function(replicate.udp.df, sites, plot_title = NA, show
     #                           num_reads = sum(num_reads)) %>%
     #   arrange(-num_reads)
     merged.udp.df = summarise(replicate.udp.df %>% group_by(type, udp),
-                              num_reads = sum(num_reads), count_udp = first(count_udp)) %>%
+                              num_reads = sum(num_reads), count_udp = first(count_udp), is_wt_allele = first(is_wt_allele)) %>%
       arrange(-num_reads)
     unique_reps.df = unique(merged.udp.df %>% ungroup() %>% dplyr::select(type))
     counts.list = list()
@@ -1406,7 +1626,12 @@ getDeletionProfilePlot = function(replicate.udp.df, sites, plot_title = NA, show
       count.df = data.frame(x=1:xmax, type = curType)
       cur.df = merged.udp.df %>% dplyr::filter(type == curType)
       udp.char.matrix = str_split_fixed(cur.df$udp, "", n = nchar(cur.df$udp[1]))
-      count.df$del_pct = 100 * sapply(count.df$x, FUN=function(i) {getDelReadCount(cur.df, udp.char.matrix, i, filterUdps=T)}) / sum(cur.df$num_reads)
+      if (ratioToWT) {
+        wtCount = sum(cur.df$is_wt_allele * cur.df$num_reads)
+        count.df$del_pct = sapply(count.df$x, FUN=function(i) {getDelReadCount(cur.df, udp.char.matrix, i, filterUdps=T)}) / wtCount
+      } else {
+        count.df$del_pct = 100 * sapply(count.df$x, FUN=function(i) {getDelReadCount(cur.df, udp.char.matrix, i, filterUdps=T)}) / sum(cur.df$num_reads)
+      }
       counts.list = c(counts.list, list(count.df))
     }
     merged.delpct.plot.df = bind_rows(counts.list)
@@ -1424,8 +1649,8 @@ getDeletionProfilePlot = function(replicate.udp.df, sites, plot_title = NA, show
     delpct.plot.df = bind_rows(delpct.plot.df, delpct.plot.unfiltered.df)
   }
   
-  alpha_values = c(`cDNA average`=0.3, `gDNA average`=0.3, `cDNA replicate`=0.9, `gDNA replicate`=0.9, `cDNA rep unflt`=0.9, `gDNA rep unflt`=0.9)
-  color_values = c(`cDNA average`="firebrick1", `gDNA average`="dodgerblue3", `cDNA replicate`="red", `gDNA replicate`="blue", `cDNA rep unflt`="orange", `gDNA rep unflt`="turquoise4")
+  alpha_values = c(`cDNA average`=0.4, `gDNA average`=0.4, `cDNA replicate`=0.9, `gDNA replicate`=0.9, `cDNA rep unflt`=0.9, `gDNA rep unflt`=0.9)
+  color_values = c(`cDNA average`="darkorange", `gDNA average`="cyan3", `cDNA replicate`="red", `gDNA replicate`="blue", `cDNA rep unflt`="orange", `gDNA rep unflt`="turquoise4")
   size_values = c(`cDNA average`=1.8, `gDNA average`=1.8, `cDNA replicate`=0.3, `gDNA replicate`=0.3, `cDNA rep unflt`=0.3, `gDNA rep unflt`=0.3)
   if (show_average & show_replicates) {
     plot.df = bind_rows(delpct.plot.df, merged.delpct.plot.df)
@@ -1463,6 +1688,9 @@ getDeletionProfilePlot = function(replicate.udp.df, sites, plot_title = NA, show
   }
   if (!is.na(sites$cut_site)) {
     p.gDNA_cDNA = p.gDNA_cDNA + geom_vline(xintercept = sites$cut_site, color="grey20", linetype = "longdash", alpha=0.5)
+  }
+  if (ratioToWT) {
+    p.gDNA_cDNA = p.gDNA_cDNA + ylab("Del:WT ratio")
   }
   return(p.gDNA_cDNA)
 }
@@ -2774,8 +3002,10 @@ getMismatchCharsCount = function(s_chars, ref_chars) {
 }
 
 getUDPRatioEstimate = function(udp.counts.df, replicates.df, numerator = "num_reads", denominator = "num_wt_reads", batchCol = NULL, randomEffectsCols = NULL) {
-  udp.counts.df$num_reads = udp.counts.df[, numerator, drop = T]
-  udp.counts.df$num_wt_reads = udp.counts.df[, denominator, drop = T]
+  num_reads = udp.counts.df[, numerator, drop = T]
+  num_wt_reads = udp.counts.df[, denominator, drop = T]
+  udp.counts.df$num_reads = num_reads
+  udp.counts.df$num_wt_reads = num_wt_reads
   
   if (sum(udp.counts.df$num_reads) == 0) {
     # We can't run a model when all counts are zeroes
