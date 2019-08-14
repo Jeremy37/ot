@@ -19,7 +19,7 @@ META=clu_sipa1l2.meta.other.tsv
 # Copy fastq files from Miseq folders all into a single folder
 mkdir fastq
 cd fastq
-find $JS/experiment/transcribed/MiSeq_Walkup_154-108747639 -type f -name '*.fastq.gz' -exec ln -s {} . \;
+find $JS/experiment/transcribed/fastq/MiSeq_Walkup_154-108747639 -type f -name '*.fastq.gz' -exec ln -s {} . \;
 
 ################################################################################
 # Use FLASH to stich together read paires prior to aligning. This should greatly

@@ -66,6 +66,13 @@ runGenIE = function(option_list)
     }
   }
   
+  if (is.null(opt$out)) {
+    stop("--out parameter must be specified")
+  }
+  if (!dir.exists(dirname(opt$out))) {
+    dir.create(dirname(opt$out), showWarnings = FALSE)
+  }
+  
   read_data = NULL
   opt$save_read_data <<- F
   opt$save_read_data <- F
@@ -75,6 +82,9 @@ runGenIE = function(option_list)
     if (file.exists(opt$read_data)) {
       cat(sprintf("Loading read data from file: %s", opt$read_data))
       read_data = readRDS(opt$read_data)
+    }
+    if (!dir.exists(dirname(opt$read_data))) {
+      dir.create(dirname(opt$read_data), showWarnings = FALSE)
     }
   }
   
@@ -341,7 +351,7 @@ statsSummaryPlot = function(grep.summary.df, stats.summary.df) {
                     width = 0.2, col = "grey30") +
       geom_hline(yintercept = 1, col = "red") +
       effect_size_theme +
-      ylab("HDR effect size") + ggtitle("HDR effect size - alignment deletion analysis") +
+      ylab("HDR effect size") + ggtitle("HDR effect size - alignment analysis") +
       scale_fill_manual(values=c(`p >= 0.01`="grey70", `p < 0.01`="cornflowerblue", `p < 0.001`="red3")) +
       coord_cartesian(ylim = c(0, max(1, max(stats.summary.df$hdr.effect * 1.05, na.rm = T))))
     
@@ -524,7 +534,7 @@ doRegionGrepAnalysis = function(counts.df, replicates.df) {
   # p.stats = ggplot(data.frame(x=1:10, y=1:10), aes(x,y)) + geom_blank() + ggThemeBlank +
   #   annotation_custom(tableGrob(t(stats.plot.df), theme = myTableTheme), xmin=1.2, xmax=10, ymin=1, ymax=8) +
   #   annotate("text", x=5, y=10, label = sprintf("%s grep summary", stats.df$name[1]), vjust = 1, fontface = 2, size = 5) +
-  #   annotate("text", x=1, y=9.3, label = summary.left.prop, vjust = 1, hjust = 0, size = 3.1)
+  #   annotate("text", x=1, y=9.3, label = summary.left, vjust = 1, hjust = 0, size = 3.1)
   plot_title = sprintf("%s grep summary", stats.df$name[1])
   p.stats = ggplot(data.frame(x=1:10, y=1:10), aes(x,y)) + geom_blank() + ggThemeBlank +
     annotation_custom(tableGrob(t(stats.plot.df), theme = myTableTheme), xmin=1.2, xmax=10, ymin=1, ymax=8.5) +
@@ -556,7 +566,7 @@ doRegionGrepAnalysis = function(counts.df, replicates.df) {
   stats.summary = list(mean_hdr_rate = mean(stats.gDNA$HDR_rate),
                        mean_wt_rate = mean(stats.gDNA$WT_rate),
                        hdr_wt.res = hdr_ratio_res,
-                       error_prop.summary = summary.left.prop)
+                       text.summary.summary = summary.left)
   
   result_list = list(p.stats = p.res,
                      stats.df = stats.df,
@@ -812,8 +822,8 @@ getFullReplicateStats = function(replicate_del_analyses, rel_sites, replicates.d
   wt.rate = sprintf("Mean WT rate gDNA: %.2g%%,  cDNA: %.2g%%", mean(stats.gDNA$WT_rate) * 100, mean(stats.cDNA$WT_rate) * 100)
 
   if (nrow(stats.gDNA) < 2 | nrow(stats.cDNA) < 2) {
-    summary.left.prop = sprintf("Unable to calculate stats with < 2 replicates")
-    summary.right.prop = ""
+    summary.left = sprintf("Unable to calculate stats with < 2 replicates")
+    summary.right = ""
   } else {
     denom = "num_wt_reads"
     ratioTo = "WT"
@@ -827,39 +837,39 @@ getFullReplicateStats = function(replicate_del_analyses, rel_sites, replicates.d
     }
     hdr_ratio_res = getUDPRatioEstimate(stats.df, replicates.df, numerator = "num_hdr_reads", denominator = denom, batchCol = opt$batch_col, randomEffectsCols = opt$random_effects_cols)
     hdr.conf.interval.str = confIntervalString(hdr_ratio_res)
-    hdr.summary.prop = sprintf("cDNA:gDNA ratio (HDR/%s): %.3g\n%s,    p = %.3g",
+    hdr.summary = sprintf("cDNA:gDNA ratio (HDR/%s): %.3g\n%s,    p = %.3g",
                                ratioTo, hdr_ratio_res$effect, hdr.conf.interval.str, hdr_ratio_res$pval)
     method = sprintf("\nMethod: %s", hdr_ratio_res$method)
 
-    summary.left.prop = paste(hdr.rate, del.rate, wt.rate, method, hdr.summary.prop, sep = "\n")
+    summary.left = paste(hdr.rate, del.rate, wt.rate, method, hdr.summary, sep = "\n")
     
     del_ratio_res = getUDPRatioEstimate(stats.df, replicates.df, numerator = "num_deletion_reads", denominator = denom, batchCol = opt$batch_col, randomEffectsCols = opt$random_effects_cols)
     del.conf.interval.str = confIntervalString(del_ratio_res)
     if (opt$custom_del_span) {
-      del.summary.prop = sprintf("Custom del site %d, span %d-%d\ncDNA:gDNA ratio (DEL/WT): %.3g\n%s,    p = %.3g",
+      del.summary = sprintf("Custom del site %d, span %d-%d\ncDNA:gDNA ratio (DEL/WT): %.3g\n%s,    p = %.3g",
                                  ratioTo, rel_sites$highlight_site, opt$del_span_start, opt$del_span_end,
                                  del_ratio_res$effect, del.conf.interval.str, del_ratio_res$pval)
     } else {
-      del.summary.prop = sprintf("cDNA:gDNA ratio (DEL/%s): %.3g\n%s,    p = %.3g",
+      del.summary = sprintf("cDNA:gDNA ratio (DEL/%s): %.3g\n%s,    p = %.3g",
                                  ratioTo, del_ratio_res$effect, del.conf.interval.str, del_ratio_res$pval)
     }
     
     del_ratio_res_2bp = getUDPRatioEstimate(stats.df, replicates.df, numerator = "num_deletions_2bp_window", denominator = denom, batchCol = opt$batch_col, randomEffectsCols = opt$random_effects_cols)
     del.conf.interval.str = confIntervalString(del_ratio_res_2bp)
-    del.summary.prop_2bp = sprintf("cDNA:gDNA ratio (DEL/%s) - 2 bp span: %.3g\n%s,    p = %.3g",
+    del.summary.2bp = sprintf("cDNA:gDNA ratio (DEL/%s) - 2 bp span: %.3g\n%s,    p = %.3g",
                                    ratioTo, del_ratio_res_2bp$effect, del.conf.interval.str, del_ratio_res_2bp$pval)
     
     del_ratio_res_10bp = getUDPRatioEstimate(stats.df, replicates.df, numerator = "num_deletions_10bp_window", denominator = denom, batchCol = opt$batch_col, randomEffectsCols = opt$random_effects_cols)
     del.conf.interval.str = confIntervalString(del_ratio_res_10bp)
-    del.summary.prop_10bp = sprintf("cDNA:gDNA ratio (DEL/%s) - 10 bp span: %.3g\n%s,    p = %.3g",
+    del.summary.10bp = sprintf("cDNA:gDNA ratio (DEL/%s) - 10 bp span: %.3g\n%s,    p = %.3g",
                                     ratioTo, del_ratio_res_10bp$effect, del.conf.interval.str, del_ratio_res_10bp$pval)
     
     del_ratio_res_20bp = getUDPRatioEstimate(stats.df, replicates.df, numerator = "num_deletions_20bp_window", denominator = denom, batchCol = opt$batch_col, randomEffectsCols = opt$random_effects_cols)
     del.conf.interval.str = confIntervalString(del_ratio_res_20bp)
-    del.summary.prop_20bp = sprintf("cDNA:gDNA ratio (DEL/%s) - 20 bp span: %.3g\n%s,    p = %.3g",
+    del.summary.20bp = sprintf("cDNA:gDNA ratio (DEL/%s) - 20 bp span: %.3g\n%s,    p = %.3g",
                                     ratioTo, del_ratio_res_20bp$effect, del.conf.interval.str, del_ratio_res_20bp$pval)
     
-    summary.right.prop = paste(del.summary.prop, del.summary.prop_2bp, del.summary.prop_10bp, sep = "\n")
+    summary.right = paste(del.summary, del.summary.2bp, del.summary.10bp, sep = "\n")
   }
   
   # Convert to strings for nice printing (with 3 significant digits)
@@ -891,8 +901,8 @@ getFullReplicateStats = function(replicate_del_analyses, rel_sites, replicates.d
   p.stats = ggplot(data.frame(x=1:10, y=1:10), aes(x,y)) + geom_blank() + ggThemeBlank +
     annotation_custom(tableGrob(t(stats.plot.df), theme = myTableTheme), xmin=1.2, xmax=10, ymin=1, ymax=8) +
     annotate("text", x=5, y=10, label = sprintf("%s analysis summary", stats.df$name[1]), vjust = 1, fontface = 2, size = 5) +
-    annotate("text", x=1, y=9.4, label = summary.left.prop, vjust = 1, hjust = 0, size = 2.9) +
-    annotate("text", x=9.5, y=9.4, label = summary.right.prop, vjust = 1, hjust = 1, size = 2.9)
+    annotate("text", x=1, y=9.4, label = summary.left, vjust = 1, hjust = 0, size = 2.9) +
+    annotate("text", x=9.5, y=9.4, label = summary.right, vjust = 1, hjust = 1, size = 2.9)
   if (!opt$no_stats) {
     p.stats = p.stats + annotate("text", x=1, y=1, label = "Data saved in *.replicate_stats.tsv", vjust = 1, hjust = 0, size = 3)
   }
@@ -906,7 +916,7 @@ getFullReplicateStats = function(replicate_del_analyses, rel_sites, replicates.d
                        del_wt.10bp.res = del_ratio_res_10bp,
                        del_wt.20bp.res = del_ratio_res_20bp,
                        del_wt.custom.res = del_ratio_res_custom,
-                       error_prop.summary = paste(summary.left.prop, summary.right.prop, sep = "\n"))
+                       text.summary = paste(summary.left, summary.right, sep = "\n"))
   
   result_list = list(p.stats = p.stats,
                      stats.df = stats.df,
@@ -1189,7 +1199,7 @@ doReplicateDeletionAnalysis = function(name, replicate, type, sam_reads, sites, 
     reads.df$sites_profile = sapply(reads.df$region_read, FUN=getReadSiteProfile, profile_positions)
     sites.profile.df = reads.df %>% group_by(sites_profile) %>%
       summarise(count = sum(count))  %>%
-      mutate(name = locus_name, replicate = replicate, type = type) %>%
+      mutate(name = name, replicate = replicate, type = type) %>%
       dplyr::select(name, replicate, type, everything())
   }
   return(list(udp.df = udp.df, wt_hdr.df = wt_hdr.df, sites.profile.df = sites.profile.df, stats = stats, read_data = read_data))

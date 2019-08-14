@@ -1,0 +1,180 @@
+# ATAC-seq in primary microglia (from Gaffney lab experiments)
+
+An exploration of ATAC-seq data in primary microglia. There are 5 samples.
+I called peaks using MACS2 with all samples as input, and peaks with FDR < 1%.
+
+```{r Setup, message=FALSE, warning=FALSE, echo=FALSE}
+library(dplyr)
+library(readr)
+library(magrittr)
+library(ggplot2)
+library(pheatmap)
+library(pcaMethods)
+library(DESeq2)
+
+root = "/Users/jeremys/work/opentargets/datasets/gaffney_microglia/ATAC"
+outputPath = "/Users/jeremys/work/opentargets/datasets/gaffney_microglia/ATAC/analysis"
+#setwd("/Users/jeremys/work/opentargets/datasets/gaffney_microglia/src/")
+
+counts.fname = file.path(outputPath, "microglia.atac.counts.tsv.gz")
+counts.mainchrs.fname = file.path(outputPath, "microglia.atac.counts.mainchrs.tsv.gz")
+narrowpeak.fname = file.path(root, "peaks/atac_microglia_peaks.narrowPeak")
+```
+
+## Basic QC
+
+Looking across samples, the number of reads varies from 50 M to 150 M.
+The fraction of mitochondrial reads varies from 36% to 69% (mean 51%).
+
+```{r CheckChrCounts, warning=FALSE, message=FALSE, echo=FALSE}
+readtsv = function(fname, ...) { readr::read_tsv(fname, ...) %>% as.data.frame() }
+sample.meta = readtsv(file.path(root, "microglia.atac.metadata.txt"))
+sample.meta$sampleID = tolower(sample.meta$sampleID)
+rownames(sample.meta) = sample.meta$sampleID
+sample.meta$day = as.factor(sample.meta$day)
+
+chrCounts.df = readtsv(file.path(root, "GRCh38/ATAC/chrcounts.all.txt"))
+colnames(chrCounts.df) = tolower(colnames(chrCounts.df))
+counttotals = colSums(chrCounts.df[,-1])
+counttotals.nochrM = colSums(chrCounts.df %>% dplyr::filter(grepl("^chr[0-9|X|Y]+$", chr)) %>% dplyr::select(-chr))
+
+chrCounts.df = chrCounts.df %>%
+  filter(!grepl("_|\\*", chr)) %>%
+  tidyr::gather("sampleID", "count", 2:ncol(chrCounts.df)) %>%
+  dplyr::left_join(sample.meta %>% dplyr::select(sampleID, Sample_name))
+
+orderedNames = sample.meta[names(counttotals)[order(counttotals)], ]$Sample_name
+chrCounts.df$Sample_name <- factor(as.character(chrCounts.df$Sample_name), levels=orderedNames)
+
+# First just plot the total read counts per sample
+ggplot(chrCounts.df %>% arrange(-count),
+       aes(x=Sample_name, y=count/1e6, fill=chr)) +
+  geom_bar(stat = "identity") + theme_bw(12) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  xlab("") + ylab("Number of reads (million)") +
+  ggtitle("Reads per chromosome") + guides(fill = guide_legend(ncol = 3)) +
+  theme(legend.key.size=unit(0.7, "cm"))
+
+# Do the same using the fraction of reads
+chrCounts.df$fraction = chrCounts.df$count / counttotals[chrCounts.df$sampleID]
+ggplot(chrCounts.df %>% arrange(-count),
+       aes(x=Sample_name, y=fraction, fill=chr)) +
+  geom_bar(stat = "identity") + theme_bw(12) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  xlab("") + ylab("Fraction") +
+  ggtitle("Fraction of reads per chromosome") + guides(fill = guide_legend(ncol = 3)) +
+  theme(legend.key.size=unit(0.7, "cm"))
+
+sprintf("Mean fraction of reads from chrM: %.2f", mean(chrCounts.df$fraction[chrCounts.df$chr == "chrM"]))
+```
+
+Most peaks are short: 55% are < 200 bp.
+The fraction of reads mapping to called peaks varies from 37% to 44%.
+
+```{r CheckReadCounts, warning=FALSE, message=FALSE, echo=FALSE}
+# Read peak metadata
+allpeak.meta = readtsv(narrowpeak.fname, col_names = c("chr", "start", "end", "peakID", "score", "scrap", "foldChange", "log10pval", "log10qval", "summitPos"))
+
+readCounts = function(fname) {
+  counts = readtsv(fname)
+  # Fix gene names to remove the version number (e.g. ".4" in ENSG00000223972.4)
+  gene_ids <- gsub("\\.[\\d]+", "", counts[,1], perl=T)
+  counts[,1] = gene_ids
+  rownames(counts) = gene_ids
+  counts
+}
+
+counts = readCounts(counts.fname)
+peak.meta = counts[,c(1,2)]
+colnames(peak.meta)[1] = "peakID"
+peak.meta = peak.meta %>% dplyr::inner_join(allpeak.meta, by="peakID")
+rownames(peak.meta) = peak.meta$peakID
+
+ggplot(peak.meta, aes(x=length)) + geom_histogram(bins=50) + theme_bw(12) +
+  ggtitle("ATAC-seq peak size") + xlab("peak size (bp)")
+ggplot(peak.meta[peak.meta$length<500,], aes(x=length)) + geom_histogram(bins=50) + theme_bw(12) +
+    ggtitle("ATAC-seq peak size") + xlab("peak size (bp)")
+
+# Plot the cumulative distribution function of peak length
+peak.size.df <- data.frame(length = unique(peak.meta$length),
+                           ecdf = ecdf(peak.meta$length)(unique(peak.meta$length)))
+ggplot(peak.size.df[peak.size.df$length<1000,], aes(x=length, y=ecdf)) + geom_line() + theme_bw(12) +
+    ggtitle("ATAC-seq peak size cumulative distribution") + xlab("peak size (bp)")
+
+# 55% of peaks are less than 200 bp
+#q = quantile(peak.meta$length, probs=seq(0.01,1,0.01))
+
+counts = counts[, -c(1,2)]
+colnames(counts) = tolower(colnames(counts))
+rownames(counts) = peak.meta$peakID
+
+readCounts.df = data.frame(peakCount = colSums(counts), sampleID = colnames(counts), totalCount = counttotals[colnames(counts)])
+readCounts.df$peakFraction = readCounts.df$peakCount / readCounts.df$totalCount
+sample.meta2 = sample.meta %>% dplyr::inner_join(readCounts.df, by="sampleID")
+ggplot(sample.meta2, aes(x=Sample_name, y=peakFraction)) + geom_bar(stat="identity") + theme_bw(12) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Fraction of reads in ATAC-seq peaks") + xlab("")
+```
+
+The fraction of reads in peaks when including only main chromosome peaks (no chrM) is slightly higher (43% to 57%).
+
+```{r CheckReadCounts.2, warning=FALSE, message=FALSE, echo=FALSE}
+counts = readCounts(counts.mainchrs.fname)
+peak.meta = counts[,c(1,2)]
+colnames(peak.meta)[1] = "peakID"
+peak.meta = peak.meta %>% dplyr::inner_join(allpeak.meta, by="peakID")
+rownames(peak.meta) = peak.meta$peakID
+
+counts = counts[, -c(1,2)]
+colnames(counts) = tolower(colnames(counts))
+rownames(counts) = peak.meta$peakID
+
+readCounts.df = data.frame(peakCount = colSums(counts), sampleID = colnames(counts), totalCount = counttotals.nochrM[colnames(counts)])
+readCounts.df$peakFraction = readCounts.df$peakCount / readCounts.df$totalCount
+sample.meta2 = sample.meta %>% dplyr::inner_join(readCounts.df, by="sampleID")
+ggplot(sample.meta2, aes(x=Sample_name, y=peakFraction)) + geom_bar(stat="identity") + theme_bw(12) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Fraction of (non-chrM) reads in ATAC-seq peaks") + xlab("")
+
+meanCounts.df = data.frame(peak=rownames(counts), peakMeanCount=rowMeans(counts))
+ggplot(meanCounts.df[meanCounts.df$peakMeanCount < 2^12,], aes(x=log2(peakMeanCount))) +
+  geom_histogram(bins=50) + theme_bw(12)
+```
+
+Most peaks have reads per million per kb below 2.5, and samples cluster as expected based on their cell type.
+
+```{r CheckReadCounts.3, warning=FALSE, message=FALSE, echo=FALSE}
+largepeak.counts = counts[peak.meta$length > 200,]
+largepeak.meta = peak.meta[peak.meta$length > 200,]
+
+coldata = data.frame(sampleID = colnames(largepeak.counts))
+dds = DESeqDataSetFromMatrix(largepeak.counts, coldata, ~0)
+colnames(dds) = colnames(largepeak.counts)
+vst = varianceStabilizingTransformation(dds)
+dds = estimateSizeFactors(dds)
+#View(assay(vst))
+counts.deseq = counts(dds, normalized=T)
+colnames(counts.deseq) = colnames(largepeak.counts)
+
+rpkm = apply(counts.deseq, MARGIN=2, FUN=function(x) x / sum(x)) * 1e6 * 1e3
+rpkm = apply(rpkm, MARGIN=2, FUN=function(x) x / largepeak.meta$length)
+peakMedianRpkm = apply(rpkm, MARGIN=1, FUN=median)
+peakMeanRpkm = apply(rpkm, MARGIN=1, FUN=mean)
+
+#peakMedianRpkm.df = data.frame(peak=names(peakMedianRpkm[peakMedianRpkm < 50]),
+#                               rpkm=peakMedianRpkm[peakMedianRpkm < 50])
+#ggplot(peakMedianRpkm.df, aes(x=rpkm)) + geom_histogram(bins = 50) + theme_bw(12) +
+#  ggtitle("Reads per kb in ATAC-seq peaks (among those >200 bp)")
+
+peakMedianRpkm.df = data.frame(peak=names(peakMedianRpkm[peakMedianRpkm < 20]),
+                               rpkm=peakMedianRpkm[peakMedianRpkm < 20])
+ggplot(peakMedianRpkm.df, aes(x=rpkm)) + geom_histogram(bins = 50) + theme_bw(12) +
+  ggtitle("Reads per kb in ATAC-seq peaks (among those >200 bp)")
+
+vst.vals.tmp = assay(vst)
+colnames(vst.vals.tmp) = sample.meta[colnames(assay(vst)),]$Sample_name
+cor.pearson = cor(vst.vals.tmp)
+pheatmap(cor.pearson, main="Heatmap of ATAC-seq peak count correlations")
+```
+
+

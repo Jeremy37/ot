@@ -34,7 +34,7 @@ cat irods.sample_lanes.txt | submitJobs.py --MEM 2000 --jobname mergeBams \
     --command "~/src/utils/bam/mergeBams.py --indir cram --outdir bam --insuffix .cram --outsuffix .bam"
 
 grep "Successfully completed" FarmOut/mergeBams.*.txt | wc -l
-grep -iP "Failed|TERM|error" FarmOut/mergeBams.*.txt | wc -l
+grep -iP "Failed|TERM_|error" FarmOut/mergeBams.*.txt | wc -l
 
 cat irods.sample_lanes.txt | tail -n +8 | head -n 1 | submitJobs.py --MEM 2000 --jobname mergeBams \
     --command "~/src/utils/bam/mergeBams.py --indir cram --outdir bam --insuffix .cram --outsuffix .bam"
@@ -59,7 +59,7 @@ cut -f 1 irods.sample_lanes.txt | submitJobs.py --MEM 3000 --jobname bamCoverage
     --command "~/src/utils/coverage/bam2bigwig.py --genome GRCh38.genome.txt --indir bam"
 grep "Successfully completed" FarmOut/bamCoverageToBigWig.*.txt | wc -l
 grep "memory" FarmOut/bamCoverageToBigWig.*.txt | wc -l
-grep -iP "Failed|TERM|error" FarmOut/bamCoverageToBigWig.*.txt | wc -l
+grep -iP "Failed|TERM_|error" FarmOut/bamCoverageToBigWig.*.txt | wc -l
 
 # Make links to bigwig files all in one folder
 mkdir bigwig
@@ -83,7 +83,7 @@ cut -f 1 irods.sample_lanes.txt | head -n 1 | submitJobs.py --MEM 1000 --jobname
 cut -f 1 irods.sample_lanes.txt | submitJobs.py --MEM 1000 --jobname verifyBamID \
     -c  "python ~/src/utils/bam/runVerifyBamID.py --bamdir . --insuffix .bam --vcf $KOLF2_VCF" 
 grep "Successfully completed" FarmOut/verifyBamID*.txt | wc -l
-grep -iP "Failed|TERM|error" FarmOut/verifyBamID*.txt | wc -l
+grep -iP "Failed|TERM_|error" FarmOut/verifyBamID*.txt | wc -l
 
 (echo -ne "Sample\t"; head -n 1 ./4859STDY7028449/4859STDY7028449.verifyBamID.bestSM) > ATAC_samples.verifyBamID.bestSM
 for f in ./*/*.verifyBamID.bestSM; do
@@ -126,7 +126,7 @@ sed -i -e 's/name/gene_id/g' atac_multisample_peaks.gff3
 cut -f1 irods.sample_lanes.txt | submitJobs.py --MEM 1000 -j featureCounts -c "~/src/utils/counts/bam2counts.py --sampleDir . --gtf atac_multisample_peaks.gff3 --strand 0 --countsSuffix .multisample_peaks.counts.txt --bamSuffix .bam --execute True --donotsort False --O True"
 
 grep "Successfully completed" FarmOut/featureCounts*.txt | wc -l
-grep -iP "Failed|TERM|error" FarmOut/featureCounts*.txt | wc -l
+grep -iP "Failed|TERM_|error" FarmOut/featureCounts*.txt | wc -l
 
 # Count reads mapping to peaks on main chromosomes only
 cat atac_multisample_peaks.gff3 | perl -ane 'if ($F[0] =~ /^chr[\d|X|Y]+$/) { print }' > atac_multisample_peaks.mainchrs.gff3
@@ -139,7 +139,7 @@ echo "4859STDY7028451" | submitJobs.py --MEM 1000 -j featureCounts.mainchrs -c "
 echo "4859STDY7079823" | submitJobs.py --MEM 1000 -j featureCounts.mainchrs -c "~/src/utils/counts/bam2counts.py --sampleDir . --gtf atac_multisample_peaks.mainchrs.gff3 --strand 0 --countsSuffix .multisample_peaks.mainchrs.counts.txt --bamSuffix .bam --execute True --donotsort False --O True"
 
 grep "Successfully completed" FarmOut/featureCounts.mainchrs*.txt | wc -l
-grep -iP "Failed|TERM|error" FarmOut/featureCounts.mainchrs*.txt | wc -l
+grep -iP "Failed|TERM_|error" FarmOut/featureCounts.mainchrs*.txt | wc -l
 
 
 cd $SEQ/ATAC/analysis
@@ -230,7 +230,7 @@ cat irods.sample_lanes.txt | submitJobs.py --MEM 2000 --jobname mergeBams \
     --command "~/src/utils/bam/mergeBams.py --indir cram --outdir . --insuffix .cram --outsuffix .bam"
 
 grep "Successfully completed" FarmOut/mergeBams.*.txt | wc -l
-grep -iP "Failed|TERM|error" FarmOut/mergeBams.*.txt | wc -l
+grep -iP "Failed|TERM_|error" FarmOut/mergeBams.*.txt | wc -l
 
 cut -f 1 irods.sample_lanes.txt | submitJobs.py --MEM 1000 --jobname indexBams \
     --command "~/src/utils/bam/indexBams.py --bamdir . --insuffix .bam"
@@ -239,6 +239,10 @@ cut -f 1 irods.sample_lanes.txt | submitJobs.py --MEM 3000 --jobname bamCoverage
     --command "~/src/utils/coverage/bam2bigwig.py --genome GRCh38.genome.txt --indir . --split"
 echo "4860STDY7028461" | submitJobs.py --MEM 3000 --jobname bamCoverageToBigWig \
     --command "~/src/utils/coverage/bam2bigwig.py --genome GRCh38.genome.txt --indir . --split"
+
+grep "Successfully completed" FarmOut/bamCoverageToBigWig.*.txt | wc -l
+grep "memory" FarmOut/bamCoverageToBigWig.*.txt | wc -l
+grep -iP "Failed|TERM_|error" FarmOut/bamCoverageToBigWig.*.txt | wc -l
 
 
 # Make links to bigwig files all in one folder
@@ -277,7 +281,7 @@ done
 GENCODE_GTF=$JS/reference/GRCh38/gencode.v27.annotation.gtf
 cut -f1 irods.sample_lanes.txt | submitJobs.py --MEM 1000 -j featureCounts -c "~/src/utils/counts/bam2counts.py --sampleDir . --gtf $GENCODE_GTF --strand 2 --countsSuffix .counts.txt --bamSuffix .bam --execute True"
 grep "Successfully completed" FarmOut/featureCounts.*.txt | wc -l
-grep -iP "Failed|TERM|error" FarmOut/featureCounts.*.txt | wc -l
+grep -iP "Failed|TERM_|error" FarmOut/featureCounts.*.txt | wc -l
 
 # I noticed a high rate of reads not mapping to any feature (gene). The same was not
 # true for my sensory neurons. I thought I would check whether I get a lower rate
