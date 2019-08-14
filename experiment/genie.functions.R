@@ -497,7 +497,7 @@ doRegionGrepAnalysis = function(counts.df, replicates.df) {
   } else {
     denom = "num_wt_reads"
     ratioTo = "WT"
-    if (opts$ratio_to_total_reads) {
+    if (opt$ratio_to_total_reads) {
       denom = "num_reads"
       ratioTo = "N_tot"
     }
@@ -827,7 +827,7 @@ getFullReplicateStats = function(replicate_del_analyses, rel_sites, replicates.d
   } else {
     denom = "num_wt_reads"
     ratioTo = "WT"
-    if (opts$ratio_to_total_reads) {
+    if (opt$ratio_to_total_reads) {
       denom = "num_kept_reads"
       ratioTo = "N_tot"
     }
@@ -2170,7 +2170,7 @@ getUNSData = function(replicate.udp.df, replicates.df, sites, region_name, min_g
   
   # Get UNS and associated stats per UDP
   denom = "num_wt_reads"
-  if (opts$ratio_to_total_reads) {
+  if (opt$ratio_to_total_reads) {
     denom = "replicate_num_reads"
   }
   udp.uns_stats.df = replicate.dels.df %>%
