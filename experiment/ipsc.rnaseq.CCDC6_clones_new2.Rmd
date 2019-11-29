@@ -1,18 +1,18 @@
 ---
-title: "RNA-seq of iPSC and microglia edited for CCDC6 rs1171830 and rs1171832"
+  title: "RNA-seq of iPSC and microglia edited for CCDC6 rs1171830 and rs1171832"
 output: html_document
 ---
-
-## Introduction
-The goal of this experiment is to understand transcriptional differences caused by either allelic replacement of synonymous SNP rs1171830 in CCDC6, allelic replacement of upstream promoter/enhancer SNP rs1171832, or knockout of CCDC6, in both iPSCs and iPSC-derived microglia.
+  
+  ## Introduction
+  The goal of this experiment is to understand transcriptional differences caused by either allelic replacement of synonymous SNP rs1171830 in CCDC6, allelic replacement of upstream promoter/enhancer SNP rs1171832, or knockout of CCDC6, in both iPSCs and iPSC-derived microglia.
 
 ### Batch 1
 There were 18 RNA-seq samples in a first batch in Jan 2019. In iPSCs, 12 samples correspond to WT (3 samples), homozygous HDR for rs1171830 (replacing alt allele A with ref allele C), het HDR, or predicted biallelic KO. However, none of the KOs appeared to be true KOs.
 There were 20 RNA-seq samples in a second batch in May 20§9, wherein new KO clones were grown, as well as more WT samples, and edits targeting the upstream enhancer SNP rs1171832, both HDR and deletion alleles.
 
 The CCDC6 KO hom lines from Batch1 are as follows:
-
-* B11 homozygous 9bp deletion over splice site GGCACTC---------ACGC (most likely this actually only removed 3 amino acids)
+  
+  * B11 homozygous 9bp deletion over splice site GGCACTC---------ACGC (most likely this actually only removed 3 amino acids)
 * G5 homozygous 5 bp deletion GGCACTCACGAT-----CGC (this appears to alter splicing, removing 30 amino acids)
 * H5 het 4bp deletion, 2 bp deletion, GGCACTCACGATG----CGC and GGCACTCACGATGGTAA——C 
 
@@ -22,21 +22,21 @@ There are also 6 samples differentiated to microglia; 3 of these are the homozyg
 
 ### Batch 2
 In Batch2, we have:
-
-* KO/Het from using the exonic Crispr : 
+  
+  * KO/Het from using the exonic Crispr : 
   * CCDC6 HOM KO clones : G6, G9, D3 and H3 are all hom 1 bp insertion
-  * CCDC6 HOM KO clone F1 is actually a het both with a 1 bp insertion
-  * CCDC6 Het KO clone F8 is 1 bp insertion over WT allele
-  * CCDC6 Het KO F6 and H5 are 1 bp insertion over the 9 bp deletion (this 9 bp deletion is the same as the previous RNA seq batch clone B11 which seemed to splice ok)  
-  * CCDC6 Het KO C7 is also 1 bp insertion over WT allele and is what I did my allele specific expression with GENIE and showed the NMD for the 1 bp insertion.  
+* CCDC6 HOM KO clone F1 is actually a het both with a 1 bp insertion
+* CCDC6 Het KO clone F8 is 1 bp insertion over WT allele
+* CCDC6 Het KO F6 and H5 are 1 bp insertion over the 9 bp deletion (this 9 bp deletion is the same as the previous RNA seq batch clone B11 which seemed to splice ok)  
+* CCDC6 Het KO C7 is also 1 bp insertion over WT allele and is what I did my allele specific expression with GENIE and showed the NMD for the 1 bp insertion.  
 
 * HDR/Del using the enhancer Crispr (lead SNP):
   * CCDC6 En HDR Hom clone F2, N6, E10 have a change to C at rs1171832 (However on the regenotyping clone F2 has maybe 10% of cells with a 59 bp insertion (actually it is a duplication of part of the sequence around the SNP).  It wasn’t detected on the first genotyping, but there may have been some selection for it in culture.  It would be interesting to see if F2 is an outlier.)
-  * CCDC6 En HDR Het clone I11
-  * CCDC6 En HDR F18 deletion  (This is a HOM 17 bp deletion over the SNP - but this clone also has 30% of cells with a strange 36 bp insertion from chromosome 9 - this definitely wasn’t in the first genotyping, so i think they might well be some selection.)
-  * CCDC6 En HDR L9 (This is a HOM 9 bp deletion over the SNP)
-  * CCDC6 WT B6 and B9 are WT (both been edited) 
-  * Kolf2 1,2 and 3 are non edited WT. Samples 1 and 2 were from the same dish of cells at a matched passage number to the CCDC6 cells, and sample 3 was from the next passage grown to a slightly higher density.
+* CCDC6 En HDR Het clone I11
+* CCDC6 En HDR F18 deletion  (This is a HOM 17 bp deletion over the SNP - but this clone also has 30% of cells with a strange 36 bp insertion from chromosome 9 - this definitely wasn’t in the first genotyping, so i think they might well be some selection.)
+* CCDC6 En HDR L9 (This is a HOM 9 bp deletion over the SNP)
+* CCDC6 WT B6 and B9 are WT (both been edited) 
+* Kolf2 1,2 and 3 are non edited WT. Samples 1 and 2 were from the same dish of cells at a matched passage number to the CCDC6 cells, and sample 3 was from the next passage grown to a slightly higher density.
 
 In this analysis we focus on the iPSCs, since we previously looked at the Batch1 microglia samples.
 
@@ -63,14 +63,25 @@ skipQC = F
 excludeSamples = NULL
 #setwd(root)
 
+# Raw featureCounts file prepared by JS
 counts.fname = file.path(root, "CCDC6_clones_all.counts.tsv.gz")
+
+# Raw featureCounts file prepared by MJB
+counts.fname.mjb = file.path("/Users/jeremys/work/opentargets/ipsc/hipsci_var/RAW/IPSc-Full.featureCounts.genes.counts.unique.tsv_counts.tsv.gz")
+# Normalised expression file by MJB
+expr.norm.fname.mjb = file.path("/Users/jeremys/work/opentargets/ipsc/hipsci_var/Exp/OT_QC_CS.CovariatesRemoved_Rel.txt.gz")
+# PCs for our samples (and HIPSCI samples) determined across whole
+# HIPSCI dataset
+expr.pcs.mjb = file.path("/Users/jeremys/work/opentargets/ipsc/hipsci_var/PCs/FullFreeze_20180626_All_TPM2.PcScores_Rel.txt.gz")
+
 meta.fname = file.path(root, "CCDC6_clones_all.meta.tsv")
 counts.summary.fname = file.path(root, "analysis", "CCDC6_clones.all.counts.summary.tsv")
 saveFiles = T
+removePCs = T
 ```
 
 
-```{r LoadCounts, warning=FALSE, message=FALSE, echo=FALSE}
+```{r LoadCounts1, warning=FALSE, message=FALSE, echo=FALSE}
 readtsv = function(fname, ...) { readr::read_tsv(fname, ...) %>% as.data.frame() }
 
 readCounts = function(fname) {
@@ -82,18 +93,35 @@ readCounts = function(fname) {
   counts
 }
 
+getRPKMs = function(counts) {
+  rpm = apply(counts, MARGIN=2, FUN=function(x) x / sum(x)) * 1e6
+  rpkm.mat = apply(rpm * 1e3, MARGIN=2, FUN=function(x) x / gene.meta$length)
+  rpkm.mat
+}
+getTPMs = function(counts) {
+  rpK = apply(counts, MARGIN=2, FUN=function(x) x / gene.meta$length) * 1e3
+  tpm.mat = apply(rpK, MARGIN=2, FUN=function(x) x / sum(x)) * 1e6
+  tpm.mat
+}
+getExprSummary = function(mat) {
+  data.frame(gene_id = rownames(mat),
+             median = rowMedians(mat),
+             mean = rowMeans(mat),
+             sd = rowSds(mat))
+}
+
 counts.df = readCounts(counts.fname)
 gene.meta = counts.df[,c(1,2)]
 
 meta.df = read_tsv(meta.fname) %>% mutate(batch = as.factor(batch))
 #meta.df = meta.df %>% filter(!sample_name %in% excludeSamples)
-counts.df = counts.df %>% select(gene_id, length, one_of(meta.df$sample_name))
+
+# Ensure the count columns are in the same order as the metadata rows
+counts.df = counts.df %>% select(gene_id, length, meta.df$sample_name)
 
 rawcounts.mat = counts.df %>% select(-gene_id, -length) %>% as.matrix()
 rownames(rawcounts.mat) = counts.df$gene_id
 
-# Ensure the metadata rows are in the same order as the counts columns
-meta.df = meta.df[match(colnames(rawcounts.mat), meta.df$sample_name),]
 ipsc_samples = meta.df %>% filter(cell_type == "ipsc") %>% .$sample_name
 mg_samples = meta.df %>% filter(cell_type == "microglia") %>% .$sample_name
 
@@ -110,29 +138,26 @@ normalized_counts <- counts(dds, normalized = T)
 # Transform with variance stabilizing transformation, and get the updated matrix
 vsd <- vst(dds, blind=T)
 
-getRPKMSummary = function(counts) {
-  rpm = apply(counts, MARGIN=2, FUN=function(x) x / sum(x)) * 1e6
-  rpkm.mat = apply(rpm * 1e3, MARGIN=2, FUN=function(x) x / gene.meta$length)
-  data.frame(gene_id = rownames(rpkm.mat),
-             median.rpkm = rowMedians(rpkm.mat),
-             mean.rpkm = rowMeans(rpkm.mat),
-             sd.rpkm = rowSds(rpkm.mat))
-}
-ipsc.rpkm.avgs.df = getRPKMSummary(normalized_counts[, ipsc_samples])
-mg.rpkm.avgs.df = getRPKMSummary(normalized_counts[, mg_samples])
+rpkm.mat = getRPKMs(normalized_counts)
+rpkm.df = cbind(data.frame(gene_id = rownames(normalized_counts)), rpkm.mat)
 
-# Save RPKM averages in iPSC and microglia to files
+ipsc.rpkm.avgs.df = getExprSummary(rpkm.mat[, ipsc_samples])
+mg.rpkm.avgs.df = getExprSummary(rpkm.mat[, mg_samples])
+
+# Save RPKMs for individual samples
 grch38_ensg_sym = grch38 %>% filter(!duplicated(ensgene)) %>% select(gene_id=ensgene, symbol)
-
-# Also save RPKMs for individual samples
-rpm = apply(normalized_counts, MARGIN=2, FUN=function(x) x / sum(x)) * 1e6
-rpkm.mat = apply(rpm * 1e3, MARGIN=2, FUN=function(x) x / gene.meta$length)
-rpkm.df = cbind(data.frame(gene_id = rownames(rpkm.mat)), rpkm.mat)
 write.table(rpkm.df %>% left_join(grch38_ensg_sym, by="gene_id") %>% select(gene_id, symbol, everything()),
             file=file.path(outputPath, "sample.rpkms.tsv"), sep="\t", quote=F, row.names=F, col.names=T, na="")
 
-expressedGenes.ipsc = ipsc.rpkm.avgs.df %>% filter(mean.rpkm >= 1) %>% .$gene_id
-expressedGenes.mg = mg.rpkm.avgs.df %>% filter(mean.rpkm >= 1) %>% .$gene_id
+tpm.mat = getTPMs(normalized_counts)
+tpm.df = cbind(data.frame(gene_id = rownames(tpm.mat)), tpm.mat)
+ipsc.tpm.avgs.df = getExprSummary(tpm.mat[, ipsc_samples])
+mg.tpm.avgs.df = getExprSummary(tpm.mat[, mg_samples])
+#expressedGenes.ipsc = ipsc.tpm.avgs.df %>% filter(mean >= 1) %>% .$gene_id
+#expressedGenes.mg = mg.tpm.avgs.df %>% filter(mean >= 1) %>% .$gene_id
+
+expressedGenes.ipsc = ipsc.rpkm.avgs.df %>% filter(mean >= 1) %>% .$gene_id
+expressedGenes.mg = mg.rpkm.avgs.df %>% filter(mean >= 1) %>% .$gene_id
 ```
 
 
@@ -158,6 +183,63 @@ ggplot(counts.summary.df, aes(x=fct_reorder(sample, -total), y=count, fill=categ
 
 Coverage looks quite even, and across all samples a decent number of reads map unambiguously (30 - 60 M). Slightly over half of reads don't map to annotated exons.
 
+We compute FPKM values, and look at the distribution of these across all genes. We set a threshold of FPKM > 1 to identify "expressed genes".
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+ggplot(ipsc.rpkm.avgs.df, aes(x=mean, fill=(mean > 1))) + geom_histogram(bins=100) +
+  theme_bw() + xlab("Mean FPKM") + scale_x_log10()
+```
+
+Next, we load the normalised data provided by Marc Bonder. These data were normalised by centering and scaling the values per gene across HIPSCI samples (mean 0, sd 1), and then 50 PCs were regressed out. The values were then rescaled to mean 0 and sd 1.
+
+```{r LoadCountsNorm, warning=FALSE, message=FALSE, echo=FALSE}
+expr.norm.df = readCounts(expr.norm.fname.mjb)
+colnames(expr.norm.df)[1] = "gene_id"
+
+# Ensure the columns are in the same order as the metadata rows
+expr.norm.df = expr.norm.df %>% select(gene_id, meta.df$sample_name)
+
+expr.norm.mat = expr.norm.df %>% select(-gene_id) %>% as.matrix()
+rownames(expr.norm.mat) = expr.norm.df$gene_id
+
+ipsc.expr.avgs.df = getExprSummary(expr.norm.mat[, ipsc_samples])
+mg.expr.avgs.df = getExprSummary(expr.norm.mat[, mg_samples])
+
+expr.norm.plot.df = expr.norm.df %>% gather(key="sample", value="val", -gene_id)
+expr.norm.plot.df$expr = "low"
+expr.norm.plot.df[expr.norm.plot.df$gene_id %in% (ipsc.rpkm.avgs.df %>% filter(mean > 1 & mean < 10) %>% .$gene_id), ]$expr = "med"
+expr.norm.plot.df[expr.norm.plot.df$gene_id %in% (ipsc.rpkm.avgs.df %>% filter(mean >= 10) %>% .$gene_id), ]$expr = "high"
+ggplot(expr.norm.plot.df, aes(x=val, fill=expr)) + geom_density(alpha=0.5) + theme_bw() +
+  ggtitle("Normalised expression values (individual samples)")
+
+ipsc.expr.avgs.plot.df = ipsc.expr.avgs.df
+ipsc.expr.avgs.plot.df$expr = "low"
+ipsc.expr.avgs.plot.df[ipsc.expr.avgs.plot.df$gene_id %in% (ipsc.rpkm.avgs.df %>% filter(mean > 1 & mean < 10) %>% .$gene_id), ]$expr = "med"
+ipsc.expr.avgs.plot.df[ipsc.expr.avgs.plot.df$gene_id %in% (ipsc.rpkm.avgs.df %>% filter(mean >= 10) %>% .$gene_id), ]$expr = "high"
+ggplot(ipsc.expr.avgs.plot.df, aes(x=mean, fill=expr)) + geom_density(alpha=0.5) + theme_bw() +
+  ggtitle("Normalised expression values (averaged across samples)")
+```
+
+What we see is that for individual samples, there is quite a wide spread of normalised expression values. This is driven mainly by lowly-expressed genes where individual samples have outlier expression (e.g. Z-score +/-25). The high variance caused by these genes/samples leads the Z-scaling to more aggressively restrict values for most samples near to zero. When we take the average normalised expression across samples, the effect is less (most average values are between +/- 2) but lowly-expressed genes still have values closer to zero.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+ipsc.avgs.df = ipsc.rpkm.avgs.df %>%
+  rename(rpkm = mean) %>%
+  left_join(ipsc.expr.avgs.df %>% rename(norm = mean), by="gene_id")
+ggplot(ipsc.avgs.df, aes(x=rpkm, y=norm)) + geom_point(alpha = 0.1) +
+  theme_bw() + scale_x_log10()
+
+# Previously I looked at the correlation between my read counts and Marc's. They differ
+# substantially, so he must have used a different transcript annotation dataset.
+# counts.avg.df = data.frame(gene_id = counts.df$gene_id, mean_js = rowMeans(counts.df  %>% select(-gene_id, -length)))
+# counts.mjb.avg.df = data.frame(gene_id = counts.mjb.df$gene_id, mean_mjb = rowMeans(counts.mjb.df  %>% select(-gene_id)))
+# counts.avg.df = counts.avg.df %>% left_join(counts.mjb.avg.df, by="gene_id")
+# ggplot(counts.avg.df, aes(x=mean_mjb, y = mean_js)) + geom_point(alpha=0.1) +
+#   theme_bw() + scale_x_log10() + scale_y_log10()
+```
+
+
+
 Examine sample correlations / clustering.
 
 ```{r, warning=FALSE, message=FALSE, echo=FALSE}
@@ -177,7 +259,21 @@ pheatmap(vsd_cor, cluster_cols = T, cluster_rows = T, treeheight_col = 30,
 ```
 
 As seen above, the microglia samples clearly separate from the iPSCs.
-Let's ignore microglia for now, since we looked at them before, and cluster iPSCs separately.
+We can do the same using the normalised expression data.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+# Compute the correlation between samples
+expr_cor <- cor(na.omit(expr.norm.mat))
+
+# Plot a heatmap. Seems that the metadata for annotation needs to have rownames.
+pheatmap(expr_cor, cluster_cols = T, cluster_rows = T, treeheight_col = 30,
+         annotation_col = meta.df %>% select(cell_type, condition),
+         show_colnames = F, fontsize = 9, main = "CCDC6 RNA-seq sample correlations")
+```
+The differences between microglia and iPSCs are less clear, presumably because strongly expressed genes in one cell type can't contribute more to the correlations than other genes.
+
+Let's ignore microglia for now, since we looked at them before, and cluster iPSCs separately, first using our own quantifications (FPKM).
+
 
 ```{r, warning=FALSE, message=FALSE, echo=FALSE}
 ipsc_samplenames = meta.ipsc.df$sample_name
@@ -198,10 +294,31 @@ pheatmap(vsd_cor.ipsc.expr,
 
 There seem to be two groups. A smaller outlying group includes the 3 new WT samples, the clone H11 which we previously observed as different from the rest, and two EN clones, one deletion (L9) and one WT (B9). It's an odd grouping - is this just due to some cell state difference? WT clones WT_KOLF2_1 and WT_KOLF2_2 are similar to each other, and are less clearly outliers than the other 4 samples.
 
+Let's do the same using the normalised data.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+pheatmap(expr_cor[ipsc_samplenames, ipsc_samplenames],
+         cluster_cols = T, cluster_rows = T, treeheight_col = 30,
+         annotation_col = meta.df[meta.df$cell_type == "ipsc",] %>% select(condition, batch),
+         show_colnames = F, fontsize = 9, main = "iPSC RNA-seq sample correlations (all genes)")
+
+expressedGenes.ipsc.norm = expressedGenes.ipsc[expressedGenes.ipsc %in% rownames(expr.norm.mat)]
+norm.ipsc.expressed = expr.norm.mat[expressedGenes.ipsc.norm, ipsc_samplenames]
+expr_cor.ipsc.expressed <- cor(norm.ipsc.expressed)
+
+titleStr = sprintf("iPSC RNA-seq sample correlations (%d expressed genes)", length(expressedGenes.ipsc.norm))
+pheatmap(expr_cor.ipsc.expressed,
+         cluster_cols = T, cluster_rows = T, treeheight_col = 30,
+         annotation_col = meta.df[meta.df$cell_type == "ipsc",] %>% select(condition, batch),
+         show_colnames = F, fontsize = 9, main = titleStr)
+```
+Using all genes is not very informative, and samples cluster completely by batch; since non-expressed genes contribute as much to the correlations as other genes, we should really restrict to expressed genes. Considering expressed genes, the sample clustering is similar to with non-normalised data, but not exactly. Samples still cluster largely by batch. Clone HOM_HDR_H11 no longer clusters in a tight group with WT_KOLF2_1/2/3 and L9/B9, though these remaining samples still cluster together (but not as tightly). Batch 2 HOM_KO_D3/G6/G9 still cluster together. 
+
+
 Let's look at PCs.
 
 ```{r, warning=FALSE, message=FALSE, echo=FALSE}
-dds.ipsc = DESeqDataSetFromMatrix(countData = rawcounts.mat[, meta.ipsc.df$sample_name],
+dds.ipsc = DESeqDataSetFromMatrix(countData = rawcounts.mat[expressedGenes.ipsc, meta.ipsc.df$sample_name],
                                   colData = meta.ipsc.df,
                                   design = ~ batch + condition)
 
@@ -214,11 +331,13 @@ normalized_counts.ipsc <- counts(dds.ipsc, normalized = T)
 vsd.ipsc <- vst(dds.ipsc, blind=T)
 
 # Get the ntop most variable genes
-ntop = 1000
-rv <- rowVars(assay(vsd.ipsc))
-varGenes <- order(rv, decreasing=TRUE)[seq_len(min(ntop, length(rv)))]
+# ntop = 1000
+# rv <- rowVars(assay(vsd.ipsc))
+# varGenes <- order(rv, decreasing=TRUE)[seq_len(min(ntop, length(rv)))]
+# pca.result = pcaMethods::pca(t(assay(vsd.ipsc)[varGenes, ]), nPcs = 5)
 
-pca.result = pcaMethods::pca(t(assay(vsd.ipsc)[varGenes, ]), nPcs = 5)
+ipsc.expr.vsd = assay(vsd.ipsc)[expressedGenes.ipsc, ]
+pca.result = pcaMethods::pca(t(ipsc.expr.vsd), nPcs = 5)
 #plotPCA(vsd.ipsc, intgroup="condition") + ggtitle("iPSC: PCA of normalized counts")
 pcs = data.frame(scores(pca.result))
 pcs$sample_name = rownames(pcs)
@@ -241,11 +360,12 @@ I can't make any sense of the PCs. Apart from the 6 samples that define the outg
 Let's examine the PC results by looking at enriched GO terms across the PCs.
 
 ```{r, warning=FALSE, message=FALSE, echo=FALSE}
-pca = prcomp(t(assay(vsd.ipsc)[varGenes,]))
-gs_pca = gosummaries(pca, components=1:3, custom_bg = expressedGenes.ipsc)
+pca = prcomp(t(assay(vsd.ipsc)[expressedGenes.ipsc,]))
+gs_pca = gosummaries(pca, components=1:4, custom_bg = expressedGenes.ipsc)
 plot(gs_pca, components = 1, fontsize = 12)
 plot(gs_pca, components = 2, fontsize = 12)
 plot(gs_pca, components = 3, fontsize = 12)
+plot(gs_pca, components = 4, fontsize = 12)
 ```
 
 The first 3 PCs all are enriched for embryo development, organ morphogenesis, and pattern specification. Does this mean that some of the cell lines are slightly more differentiated / less pluripotent than others?  It's annoying if that obscures our actual results. These enrichments are similar whether I use all genes as a background gene set, or only genes expressed in our samples.
@@ -253,11 +373,68 @@ Let's look at the genes defining these PCs.
 
 ```{r, warning=FALSE, message=FALSE, echo=FALSE}
 # Plot showing genes
-gs_pca2 = gosummaries(pca, show_genes = T, n_genes = 50, components=1:3, custom_bg = expressedGenes.ipsc)
+gs_pca2 = gosummaries(pca, show_genes = T, n_genes = 50, components=1:4, custom_bg = expressedGenes.ipsc)
 plot(gs_pca2, components = 1, fontsize = 12)
 plot(gs_pca2, components = 2, fontsize = 12)
 plot(gs_pca2, components = 3, fontsize = 12)
+plot(gs_pca2, components = 4, fontsize = 12)
 ```
+
+Let's looks at PCs for the normalised expression data.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+pca.result = pcaMethods::pca(t(norm.ipsc.expressed), nPcs = 5)
+#plotPCA(vsd.ipsc, intgroup="condition") + ggtitle("iPSC: PCA of normalized counts")
+pcs = data.frame(scores(pca.result))
+pcs$sample_name = rownames(pcs)
+pcs.meta = dplyr::left_join(pcs, meta.ipsc.df, by="sample_name")
+
+PCnames = factor(names(pca.result@R2), levels=c("PC1", "PC2", "PC3", "PC4", "PC5"))
+ggplot(data.frame(R2=pca.result@R2, PC=PCnames), aes(x=PC, y=R2)) +
+  geom_bar(stat="identity") + ggtitle("Variance explained by RNA-seq PCs") + theme_bw()
+
+ggplot(pcs.meta, aes(x=PC1, y=PC2, col=condition, shape=batch)) + geom_point(alpha=0.7, size=3) + geom_text(aes(label = clone), size=2.6, hjust=1, nudge_x=-0.5) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC1, y=PC3, col=condition, shape=batch)) + geom_point(alpha=0.7, size=3) + geom_text(aes(label = clone), size=2.6, hjust=1, nudge_x=-0.5) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC2, y=PC3, col=condition, shape=batch)) + geom_point(alpha=0.7, size=3) + geom_text(aes(label = clone), size=2.6, hjust=1, nudge_x=-0.5) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC2, y=PC4, col=condition, shape=batch)) + geom_point(alpha=0.7, size=3) + geom_text(aes(label = clone), size=2.6, hjust=1, nudge_x=-0.5) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC3, y=PC4, col=condition, shape=batch)) + geom_point(alpha=0.7, size=3) + geom_text(aes(label = clone), size=2.6, hjust=1, nudge_x=-0.5) + theme_bw(12)
+
+```
+
+It looks as if KO samples from Batch 2 (and possibly Batch 1 as well) separate on PC3. WT1 and WT2 are fairly large outliers on PC4. The EN_HDR samples don't separate on any PC.
+
+Let's examine the PC results by looking at enriched GO terms across the PCs.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+pca = prcomp(t(norm.ipsc.expressed))
+gs_pca = gosummaries(pca, components=1:4, custom_bg = expressedGenes.ipsc.norm)
+plot(gs_pca, components = 1, fontsize = 12)
+plot(gs_pca, components = 2, fontsize = 12)
+plot(gs_pca, components = 3, fontsize = 12)
+plot(gs_pca, components = 4, fontsize = 12)
+```
+
+Look at the genes defining these PCs.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+# Plot showing genes
+gs_pca2 = gosummaries(pca, show_genes = T, n_genes = 50, components=1:4, custom_bg = expressedGenes.ipsc)
+plot(gs_pca2, components = 1, fontsize = 12)
+plot(gs_pca2, components = 2, fontsize = 12)
+plot(gs_pca2, components = 3, fontsize = 12)
+plot(gs_pca2, components = 4, fontsize = 12)
+```
+
+We save some results from gProfiler, particularly for PC3.
+
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+#Let's see what the heatmap looks like if we regress out PCs 1 and 2.
+loadings = pcaMethods::loadings(pca.result)
+ipsc.expr.vsd
+all(rownames(loadings) == rownames(ipsc.expr.vsd))
+ipsc.expr.vsd.pcacorr = 
+  ```
 
 
 ```{r PlotDE, warning=FALSE, message=FALSE, echo=FALSE}
@@ -339,12 +516,32 @@ The KO samples clearly have lower CCDC6 expression! Microglia have lower CCDC6 e
 
 The challenge with this is that CCDC6 eQTLs aren't of a consistent direction in GTEx, nor is rs1171832 the top eQTL SNP in any tissue. In artery, for rs1171832 we have that G is lower expression (than C) and it is also lower AD risk. But in esophagus mucosa G is higher expression. More relevant, the weak eQTL in microglia has G as higher expression. But in HIPSCI iPSCs there is little evidence of an eQTL at rs1171832 (p=0.005), even though there exists an eQTL for CCDC6 at other SNPs with p=1e-12.
 
+Now look at CCDC6 normalised expression.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+ccdc6_ensg = "ENSG00000108091"
+
+ccdc6.expr.norm = expr.norm.mat[ccdc6_ensg, ]
+ccdc6.df = data.frame(sample_name = colnames(expr.norm.mat), expr = ccdc6.expr.norm) %>%
+  left_join(meta.df, by="sample_name") %>%
+  arrange(expr)
+ggplot(ccdc6.df %>% filter(cell_type == "ipsc"), aes(x=fct_reorder(sample_short, -expr), y=expr, fill=condition2)) +
+  geom_bar(stat="identity") +
+  theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("CCDC6 expression (iPSCs) - normalised") + ylab("CCDC6 expression (normalised)") + xlab("Sample name") +
+  scale_fill_discrete(name = "Condition")
+```
+
+Unfortunately, what looked like a promising trend in the basic counts data, with EN_HDR samples having higher CCDC6 expression, is gone in the normalised data. Indeed, WT samples cover basically the whole range of expression values (apart from the KOs), and the HDR samples for both EN and SYN are intermediate.
+
 Let's also look at expression of genes near CCDC6.
 
 ```{r, warning=FALSE, message=FALSE, echo=FALSE}
-genes_near_ccdc6 = grch38 %>% filter(symbol %in% c("CCDC6", "ANK3", "MRLN", "SLC16A9", "FAM13C", "LINC01553", "AL592430.1", "AL592430.2"))
+#genes_near_ccdc6 = grch38 %>% filter(symbol %in% c("CCDC6", "ANK3", "MRLN", "SLC16A9", "FAM13C", "LINC01553", "AL592430.1", "AL592430.2"))
+# Only include expressed genes
+genes_near_ccdc6 = grch38 %>% filter(symbol %in% c("CCDC6", "ANK3", "SLC16A9", "AL592430.1"))
 normalized_counts.ipsc <- counts(dds.ipsc, normalized = T)
-sel_norm_counts <- normalized_counts[genes_near_ccdc6$ensgene, meta.ipsc.df$sample_name] %>%
+sel_norm_counts <- normalized_counts.ipsc[genes_near_ccdc6$ensgene, meta.ipsc.df$sample_name] %>%
   t() %>% as.data.frame()
 sel_norm_counts = sel_norm_counts[order(-sel_norm_counts$ENSG00000108091), ] %>% t()
 colnames(sel_norm_counts) = meta.ipsc.df[colnames(sel_norm_counts),]$sample_short
@@ -381,15 +578,15 @@ I don't see any pattern to the other genes based on CCDC6 expression This isn't 
 
 ```{r, warning=FALSE, message=FALSE, echo=FALSE}
 # Get the counts, with samples ordered by edit type
-sel_norm_counts <- normalized_counts[genes_near_ccdc6$ensgene, meta.ipsc.df %>% arrange(condition2) %>% .$sample_name] %>%
+sel_counts <- normalized_counts[genes_near_ccdc6$ensgene, meta.ipsc.df %>% arrange(condition2) %>% .$sample_name] %>%
   t() %>% as.data.frame() %>% t()
 rownames(meta.ipsc.df) = meta.ipsc.df$sample_name
-rownames(sel_norm_counts) = genes_near_ccdc6$symbol
-sel_norm_counts2 = sel_norm_counts
+rownames(sel_counts) = genes_near_ccdc6$symbol
+sel_counts2 = sel_counts
 
-colnames(sel_norm_counts) = meta.ipsc.df[colnames(sel_norm_counts),]$sample_short
+colnames(sel_counts) = meta.ipsc.df[colnames(sel_counts),]$sample_short
 
-pheatmap(sel_norm_counts,
+pheatmap(sel_counts,
          color = heat_colors,
          cluster_cols = F,
          cluster_rows = T,
@@ -400,7 +597,7 @@ pheatmap(sel_norm_counts,
          scale = "row",
          main = "Genes near CCDC6 (by edit type)")
 
-sel_counts.df = sel_norm_counts2 %>% as.data.frame() %>% rownames_to_column(var = "gene") %>%
+sel_counts.df = sel_counts2 %>% as.data.frame() %>% rownames_to_column(var = "gene") %>%
   gather(key = "sample", value = "count", -gene) %>%
   left_join(meta.ipsc.df %>% select(sample=sample_name, edit=condition2, batch, pc1_outlier), by="sample")
 ggplot(sel_counts.df, aes(x=edit, y=log10(count), fill=edit)) +
@@ -408,7 +605,8 @@ ggplot(sel_counts.df, aes(x=edit, y=log10(count), fill=edit)) +
   geom_jitter(width=0.2, alpha=0.67, size=2, aes(shape=batch, col=pc1_outlier)) +
   scale_color_manual(values = c(`TRUE`="red", `FALSE`="black")) +
   theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  facet_wrap(~gene, nrow = 2, scales="free")
+  facet_wrap(~gene, nrow = 2, scales="free") +
+  ggtitle("Genes near CCDC6 (basic counts)")
 
 write.table(rpkm.df %>% left_join(grch38_ensg_sym, by="gene_id") %>% select(gene_id, symbol, everything()) %>% filter(symbol %in% genes_near_ccdc6$symbol),
             file=file.path(outputPath, "sample.rpkms.genes_near_ccdc6.tsv"), sep="\t", quote=F, row.names=F, col.names=T, na="")
@@ -421,7 +619,7 @@ It looks like there *could* be an effect of higher expression of some genes in t
 ```{r, warning=FALSE, message=FALSE, echo=FALSE}
 #sel_counts.df %>% group_by(gene, edit) %>% summarise(n = n(), mean = mean(count))
 #print(sel_counts.df)
-test_counts.df = sel_counts.df %>% filter(gene != "LINC01553") %>% mutate(edit = as.character(edit))
+test_counts.df = sel_counts.df %>% mutate(edit = as.character(edit))
 test_counts.df$edit = factor(test_counts.df$edit,
                              levels = c("WT", unique(test_counts.df$edit[test_counts.df$edit != "WT"])))
 
@@ -446,6 +644,49 @@ bind_rows(lapply(res, tidy), .id = "gene") %>% filter(term != "(Intercept)")
 
 What you believe depends on how you correct for multiple tests. Considering just CCDC6 EN_HDR vs. WT, we have p = 0.045, with EN_HDR having 1.25 higher expression than WT. If this is interesting, then we should also consider that the p values for MRLN and SLC16A9 are both nearly identical (about p=0.04) and show increased expression in EN_HDR vs WT. SYN_HDR vs. WT also shows a decrease in expression of FAM13C (p = 0.019) and increase in MRLN (p=0.019).
 
+Now we do it again with the normalised data.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+# Get the counts, with samples ordered by edit type
+sel_norm_counts <- expr.norm.mat[genes_near_ccdc6$ensgene, meta.ipsc.df %>% arrange(condition2) %>% .$sample_name] %>%
+  t() %>% as.data.frame() %>% t()
+rownames(meta.ipsc.df) = meta.ipsc.df$sample_name
+rownames(sel_norm_counts) = genes_near_ccdc6$symbol
+sel_norm_counts2 = sel_norm_counts
+
+colnames(sel_norm_counts) = meta.ipsc.df[colnames(sel_norm_counts),]$sample_short
+
+pheatmap(sel_norm_counts,
+         color = heat_colors,
+         cluster_cols = F,
+         cluster_rows = T,
+         show_rownames = T,
+         fontsize = 9,
+         treeheight_col = 30,
+         annotation_col = annot.df,
+         scale = "row",
+         main = "Genes near CCDC6 (by edit type)")
+
+sel_counts.df = sel_norm_counts2 %>% as.data.frame() %>% rownames_to_column(var = "gene") %>%
+  gather(key = "sample", value = "expr", -gene) %>%
+  left_join(meta.ipsc.df %>% select(sample=sample_name, edit=condition2, batch, pc1_outlier), by="sample")
+sel_counts.df2 = bind_rows(sel_counts.df,
+                           sel_counts.df %>% filter(gene == "CCDC6", edit != "KO") %>% mutate(gene = "CCDC6 (no KOs)"))
+ggplot(sel_counts.df2, aes(x=edit, y=expr, fill=edit)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width=0.2, alpha=0.67, size=2, aes(shape=batch)) +
+  theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  facet_wrap(~gene, nrow = 2, scales="free") +
+  ggtitle("Genes near CCDC6 (normalised counts)")
+
+write.table(rpkm.df %>% left_join(grch38_ensg_sym, by="gene_id") %>% select(gene_id, symbol, everything()) %>% filter(symbol %in% genes_near_ccdc6$symbol),
+            file=file.path(outputPath, "sample.rpkms.genes_near_ccdc6.tsv"), sep="\t", quote=F, row.names=F, col.names=T, na="")
+
+
+```
+
+There's a slight indication that EN_DEL samples might have lower expression than WT in normalised data, though I don't think this could be significant from looking at it. But there's no difference between EN_HDR and WT.
+
 Let's do it all again after excluding 4 outlier samples.
 
 ```{r, warning=FALSE, message=FALSE, echo=FALSE}
@@ -469,7 +710,7 @@ With outliers excluded, EN_HDR vs. WT has a similar p-value of 0.038 for CCDC6. 
 Let's do it again, but now using a randomization method, whereby I compare the test statistic to those from 1000 permutations of expression across the relevant groups.
 
 ```{r, warning=FALSE, message=FALSE, echo=FALSE}
-test_counts.df = sel_counts.df %>% filter(gene != "LINC01553") %>% mutate(edit = as.character(edit))
+test_counts.df = sel_counts.df %>% mutate(edit = as.character(edit))
 test_counts.df$edit = factor(test_counts.df$edit,
                              levels = c("WT", unique(test_counts.df$edit[test_counts.df$edit != "WT"])))
 
@@ -504,7 +745,7 @@ doRandomizationTest = function(testgene, compare_edit, nperm = 1000) {
 
 print("EN_HDR vs. WT: RANDOMIZATION test for difference in log counts using glm.")
 set.seed(37)
-gene_list = c("CCDC6", "AL592430.1", "ANK3", "FAM13C", "MRLN", "SLC16A9")
+gene_list = c("CCDC6", "AL592430.1", "ANK3", "SLC16A9")
 
 reslist = lapply(gene_list, function(gene) doRandomizationTest(gene, "EN_HDR", nperm = 1000))
 plotlist = lapply(reslist, function(res) res$ggp)
@@ -542,124 +783,6 @@ print(res.df)
 ```
 
 
-## CCDC6 expression - after removing PCs
-
-We regress out PCs 1 & 2 and see if expression looks different.
-
-```{r, warning=FALSE, message=FALSE, echo=FALSE}
-# Get the counts, with samples ordered by edit type
-sel_norm_counts <- normalized_counts[genes_near_ccdc6$ensgene, meta.ipsc.df %>% arrange(condition2) %>% .$sample_name] %>%
-  t() %>% as.data.frame() %>% t()
-rownames(meta.ipsc.df) = meta.ipsc.df$sample_name
-rownames(sel_norm_counts) = genes_near_ccdc6$symbol
-sel_norm_counts2 = sel_norm_counts
-
-# Remove PCs from the expression matrix
-
-
-colnames(sel_norm_counts) = meta.ipsc.df[colnames(sel_norm_counts),]$sample_short
-
-pheatmap(sel_norm_counts,
-         color = heat_colors,
-         cluster_cols = F,
-         cluster_rows = T,
-         show_rownames = T,
-         fontsize = 9,
-         treeheight_col = 30,
-         annotation_col = annot.df,
-         scale = "row",
-         main = "Genes near CCDC6 (by edit type)")
-
-sel_counts.df = sel_norm_counts2 %>% as.data.frame() %>% rownames_to_column(var = "gene") %>%
-  gather(key = "sample", value = "count", -gene) %>%
-  left_join(meta.ipsc.df %>% select(sample=sample_name, edit=condition2, batch, pc1_outlier), by="sample")
-ggplot(sel_counts.df, aes(x=edit, y=log10(count), fill=edit)) +
-  geom_boxplot(outlier.shape = NA) +
-  geom_jitter(width=0.2, alpha=0.67, size=2, aes(shape=batch, col=pc1_outlier)) +
-  scale_color_manual(values = c(`TRUE`="red", `FALSE`="black")) +
-  theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  facet_wrap(~gene, nrow = 2, scales="free")
-
-write.table(rpkm.df %>% left_join(grch38_ensg_sym, by="gene_id") %>% select(gene_id, symbol, everything()) %>% filter(symbol %in% genes_near_ccdc6$symbol),
-            file=file.path(outputPath, "sample.rpkms.genes_near_ccdc6.tsv"), sep="\t", quote=F, row.names=F, col.names=T, na="")
-
-
-```
-
-Let's do it again, but now using a randomization method, whereby I compare the test statistic to those from 1000 permutations of expression across the relevant groups.
-
-```{r, warning=FALSE, message=FALSE, echo=FALSE}
-test_counts.df = sel_counts.df %>% filter(gene != "LINC01553") %>% mutate(edit = as.character(edit))
-test_counts.df$edit = factor(test_counts.df$edit,
-                             levels = c("WT", unique(test_counts.df$edit[test_counts.df$edit != "WT"])))
-
-glmFitVsWT = function(df, editType) {
-  fit = glm(count ~ edit, family = gaussian(link=log),
-            data = df %>% filter(edit %in% c(editType, "WT")))
-  fit
-}
-
-doRandomizationTest = function(testgene, compare_edit, nperm = 1000) {
-  test.df = test_counts.df %>% filter(gene == testgene, edit %in% c("WT", compare_edit))
-  #print("EN_HDR vs. WT: RANDOMIZATION test for difference in log counts using glm.")
-  main_fit = glmFitVsWT(test.df, compare_edit)
-  coefName = paste0("edit", compare_edit)
-  main_stat = coefficients(main_fit)[coefName]
-  rand_stats = c()
-  for (i in 1:nperm) {
-    fit = glmFitVsWT(test.df %>% ungroup() %>% mutate(count = sample(count)), compare_edit)
-    rand_stats = c(rand_stats, coefficients(fit)[coefName])
-  }
-  p = min(sum(main_stat < rand_stats), sum(main_stat > rand_stats)) / length(rand_stats)
-  p_text = sprintf("one-tailed p = %.3g", p)
-  ggp = ggplot(data.frame(rand_stats=rand_stats), aes(x=rand_stats)) +
-    geom_histogram(bins = 40) + theme_bw() +
-    geom_vline(xintercept = main_stat, size = 1, col = "red", alpha = 0.8) +
-    annotate(geom = "text", x = Inf, y = Inf, label = p_text, hjust = 1.1, vjust = 2) +
-    ggtitle(sprintf("%s: %s vs WT", testgene, compare_edit)) +
-    theme(plot.title = element_text(size=11), axis.title.x = element_blank())
-  res = list(gene = testgene, comparison = compare_edit, nperm = nperm, p = p, main_stat = main_stat, rand_stats = rand_stats, ggp = ggp)
-  res
-}
-
-print("EN_HDR vs. WT: RANDOMIZATION test for difference in log counts using glm.")
-set.seed(37)
-gene_list = c("CCDC6", "AL592430.1", "ANK3", "FAM13C", "MRLN", "SLC16A9")
-
-reslist = lapply(gene_list, function(gene) doRandomizationTest(gene, "EN_HDR", nperm = 1000))
-plotlist = lapply(reslist, function(res) res$ggp)
-cowplot::plot_grid(plotlist = plotlist, ncol=3)
-
-res.df = data.frame(gene = sapply(reslist, function(res) res$gene),
-                    comparison = sapply(reslist, function(res) paste0(res$comparison," vs. WT")),
-                    estimate = sapply(reslist, function(res) res$main_stat),
-                    fold_change = sapply(reslist, function(res) exp(res$main_stat)),
-                    permutation_p = sapply(reslist, function(res) res$p))
-print(res.df)
-
-reslist = lapply(gene_list, function(gene) doRandomizationTest(gene, "KO", nperm = 1000))
-plotlist = lapply(reslist, function(res) res$ggp)
-cowplot::plot_grid(plotlist = plotlist, ncol=3)
-
-res.df = data.frame(gene = sapply(reslist, function(res) res$gene),
-                    comparison = sapply(reslist, function(res) paste0(res$comparison," vs. WT")),
-                    estimate = sapply(reslist, function(res) res$main_stat),
-                    fold_change = sapply(reslist, function(res) exp(res$main_stat)),
-                    permutation_p = sapply(reslist, function(res) res$p))
-print(res.df)
-
-reslist = lapply(gene_list, function(gene) doRandomizationTest(gene, "SYN_HDR", nperm = 1000))
-plotlist = lapply(reslist, function(res) res$ggp)
-cowplot::plot_grid(plotlist = plotlist, ncol=3)
-
-res.df = data.frame(gene = sapply(reslist, function(res) res$gene),
-                    comparison = sapply(reslist, function(res) paste0(res$comparison," vs. WT")),
-                    estimate = sapply(reslist, function(res) res$main_stat),
-                    fold_change = sapply(reslist, function(res) exp(res$main_stat)),
-                    permutation_p = sapply(reslist, function(res) res$p))
-print(res.df)
-
-```
 
 
 ## CCDC6 expression correlations
@@ -741,8 +864,8 @@ if (saveFiles) {
 We get similar enrichments when the 4 outlier samples are excluded.
 
 How do the CCDC6 correlations with outliers excluded compare with when they're included?
-
-```{r, warning=FALSE, message=FALSE, echo=FALSE}
+  
+  ```{r, warning=FALSE, message=FALSE, echo=FALSE}
 ccdc6_cor.df = ccdc6_cor %>%
   left_join(ccdc6_cor.excl %>% rename(cor_excl = cor), by="gene_id") %>%
   mutate(cor_diff = cor_excl - cor)
@@ -953,9 +1076,9 @@ Now let's look at GO enrichment of the DE genes.
 
 ```{r, warning=FALSE, message=FALSE, echo=FALSE}
 genesUp = (ipsc.hom_ko.res.sig.df %>% arrange(padj) %>% filter(log2FoldChange > 0) %>%
-                             filter(between(row_number(), 1, 1000)) %>% .$gene_id)
+             filter(between(row_number(), 1, 1000)) %>% .$gene_id)
 genesDown = (ipsc.hom_ko.res.sig.df %>% arrange(padj) %>% filter(log2FoldChange < 0) %>%colnames(sig_norm_counts)
-                               filter(between(row_number(), 1, 1000)) %>% .$gene_id)
+             filter(between(row_number(), 1, 1000)) %>% .$gene_id)
 gl = list(DiffExpInKO = list(Up=genesUp, Down=genesDown)) #
 #gs1 = gosummaries(gl)
 #plot(gs1, fontsize = 12)
@@ -1121,9 +1244,9 @@ Again, look at GO enrichment of the DE genes.
 ```{r, warning=FALSE, message=FALSE, echo=FALSE}
 ipsc.hom_ko.vs_all.res.sig.df = ipsc.hom_ko.vs_all.res.df %>% filter(padj < 0.05)
 genesUp = (ipsc.hom_ko.vs_all.res.sig.df %>% arrange(padj) %>% filter(log2FoldChange > 0) %>%
-                             filter(between(row_number(), 1, 1000)) %>% .$gene_id)
+             filter(between(row_number(), 1, 1000)) %>% .$gene_id)
 genesDown = (ipsc.hom_ko.vs_all.res.sig.df %>% arrange(padj) %>% filter(log2FoldChange < 0) %>%
-                               filter(between(row_number(), 1, 1000)) %>% .$gene_id)
+               filter(between(row_number(), 1, 1000)) %>% .$gene_id)
 gl = list(DiffExpInKO = list(Up=genesUp, Down=genesDown)) #
 #gs1 = gosummaries(gl)
 #plot(gs1, fontsize = 12)
@@ -1196,19 +1319,17 @@ normalized_counts.ipsc <- counts(dds.ipsc, normalized = T)
 # Transform with variance stabilizing transformation, and get the updated matrix
 vsd.ipsc <- vst(dds.ipsc, blind=T)
 
-ipsc.rpkm.avgs.df = getRPKMSummary(normalized_counts.ipsc)
-
-rpm = apply(normalized_counts.ipsc, MARGIN=2, FUN=function(x) x / sum(x)) * 1e6
-rpkm.mat = apply(rpm * 1e3, MARGIN=2, FUN=function(x) x / gene.meta$length)
+rpkm.mat = getRPKMs(normalized_counts.ipsc)
 rpkm.df = cbind(data.frame(gene_id = rownames(rpkm.mat)), rpkm.mat)
-expressedGenes.ipsc = ipsc.rpkm.avgs.df %>% filter(mean.rpkm >= 1) %>% .$gene_id
+ipsc.rpkm.avgs.df = getExprSummary(rpkm.mat)
+expressedGenes.ipsc = ipsc.rpkm.avgs.df %>% filter(mean >= 1) %>% .$gene_id
 
 # Get the ntop most variable genes
-ntop = 1000
-rv <- rowVars(assay(vsd.ipsc))
-varGenes <- order(rv, decreasing=TRUE)[seq_len(min(ntop, length(rv)))]
+# ntop = 1000
+# rv <- rowVars(assay(vsd.ipsc))
+# varGenes <- order(rv, decreasing=TRUE)[seq_len(min(ntop, length(rv)))]
 
-pca.result = pcaMethods::pca(t(assay(vsd.ipsc)[varGenes, ]), nPcs = 5)
+pca.result = pcaMethods::pca(t(assay(expressedGenes.ipsc)[varGenes, ]), nPcs = 5)
 pcs = data.frame(scores(pca.result))
 pcs$sample_name = rownames(pcs)
 pcs.meta = dplyr::left_join(pcs, meta.ipsc.df, by="sample_name")
@@ -1282,9 +1403,9 @@ Again, look at GO enrichment of the DE genes.
 ```{r, warning=FALSE, message=FALSE, echo=FALSE}
 ipsc.hom_ko.vs_all.excl4.res.sig.df = ipsc.hom_ko.vs_all.excl4.res.df %>% filter(padj < 0.05)
 genesUp = (ipsc.hom_ko.vs_all.excl4.res.sig.df %>% arrange(padj) %>% filter(log2FoldChange > 0) %>%
-                             filter(between(row_number(), 1, 1000)) %>% .$gene_id)
+             filter(between(row_number(), 1, 1000)) %>% .$gene_id)
 genesDown = (ipsc.hom_ko.vs_all.excl4.res.sig.df %>% arrange(padj) %>% filter(log2FoldChange < 0) %>%
-                               filter(between(row_number(), 1, 1000)) %>% .$gene_id)
+               filter(between(row_number(), 1, 1000)) %>% .$gene_id)
 gl = list(DiffExpInKO = list(Up=genesUp, Down=genesDown)) #
 #gs1 = gosummaries(gl)
 #plot(gs1, fontsize = 12)
@@ -1359,12 +1480,10 @@ normalized_counts.ipsc <- counts(dds.ipsc, normalized = T)
 # Transform with variance stabilizing transformation, and get the updated matrix
 vsd.ipsc <- vst(dds.ipsc, blind=T)
 
-ipsc.rpkm.avgs.df = getRPKMSummary(normalized_counts.ipsc)
-
-rpm = apply(normalized_counts.ipsc, MARGIN=2, FUN=function(x) x / sum(x)) * 1e6
-rpkm.mat = apply(rpm * 1e3, MARGIN=2, FUN=function(x) x / gene.meta$length)
+rpkm.mat = getRPKMs(normalized_counts.ipsc)
 rpkm.df = cbind(data.frame(gene_id = rownames(rpkm.mat)), rpkm.mat)
-expressedGenes.ipsc = ipsc.rpkm.avgs.df %>% filter(mean.rpkm >= 1) %>% .$gene_id
+ipsc.rpkm.avgs.df = getExprSummary(rpkm.mat)
+expressedGenes.ipsc = ipsc.rpkm.avgs.df %>% filter(mean >= 1) %>% .$gene_id
 ```
 
 
@@ -1458,12 +1577,10 @@ normalized_counts.ipsc <- counts(dds.ipsc, normalized = T)
 # Transform with variance stabilizing transformation, and get the updated matrix
 vsd.ipsc <- vst(dds.ipsc, blind=T)
 
-ipsc.rpkm.avgs.df = getRPKMSummary(normalized_counts.ipsc)
-
-rpm = apply(normalized_counts.ipsc, MARGIN=2, FUN=function(x) x / sum(x)) * 1e6
-rpkm.mat = apply(rpm * 1e3, MARGIN=2, FUN=function(x) x / gene.meta$length)
+rpkm.mat = getRPKMs(normalized_counts.ipsc)
 rpkm.df = cbind(data.frame(gene_id = rownames(rpkm.mat)), rpkm.mat)
-expressedGenes.ipsc = ipsc.rpkm.avgs.df %>% filter(mean.rpkm >= 1) %>% .$gene_id
+ipsc.rpkm.avgs.df = getExprSummary(rpkm.mat)
+expressedGenes.ipsc = ipsc.rpkm.avgs.df %>% filter(mean >= 1) %>% .$gene_id
 ```
 
 
@@ -1968,9 +2085,9 @@ Let's look at GO enrichment of the DE genes.
 
 ```{r, warning=FALSE, message=FALSE, echo=FALSE}
 genesUp = (ipsc.en_all_hdr.res.sig.df %>% arrange(padj) %>% filter(log2FoldChange > 0) %>%
-                             filter(between(row_number(), 1, 1000)) %>% .$gene_id)
+             filter(between(row_number(), 1, 1000)) %>% .$gene_id)
 genesDown = (ipsc.en_all_hdr.res.sig.df %>% arrange(padj) %>% filter(log2FoldChange < 0) %>%
-                               filter(between(row_number(), 1, 1000)) %>% .$gene_id)
+               filter(between(row_number(), 1, 1000)) %>% .$gene_id)
 gl = list(DiffExpInEnHDR = list(Up=genesUp, Down=genesDown)) #
 gs2 = gosummaries(gl, custom_bg = expressedGenes.ipsc)
 plot(gs2, fontsize = 12)

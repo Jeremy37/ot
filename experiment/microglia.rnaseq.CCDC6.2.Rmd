@@ -1,0 +1,386 @@
+---
+title: "Analysis 2: RNA-seq of iPSC-derived microglia edited for CCDC6 rs1171832"
+output: html_document
+---
+  
+## Introduction
+This is a complement to the main analysis, which looked at transcriptional differences caused by allelic replacement of CCDC6 upstream promoter/enhancer SNP rs1171832 (called EN_HDR) in iPSC-derived microglia.
+
+Here we look at a subset of samples which show more similar expression of some microglial markers, such as CD11b and CD45. The clones of interest are N6 and F2 (Hom HDR for rs1171832) and B6_WT, which all show relatively lower expression of the microglial markers.
+
+```{r Setup, message=FALSE, warning=FALSE, echo=FALSE}
+library(pheatmap)
+library(DESeq2)
+library(pcaMethods)
+library(tidyverse)
+library(RColorBrewer)
+library(annotables)
+library(gProfileR)
+library(pcaMethods)
+library(broom)
+library(GOsummaries)
+library(BiocParallel)
+register(MulticoreParam(4))
+options(stringsAsFactors = F)
+
+knitr::opts_chunk$set(fig.width=7.5, fig.height=5.2) 
+
+root = "/Users/jeremys/work/opentargets/experiment/RNA/microglia_ccdc6"
+outputPath = file.path(root, "analysis")
+saveFiles = T
+excludeSamples = NULL
+#setwd(root)
+
+# Raw featureCounts
+counts.fname = file.path(root, "microglia.all.counts.tsv.gz")
+meta.fname = file.path(root, "microglia_ccdc6.meta.all.tsv")
+
+counts.summary.fname = file.path(root, "analysis", "microglia_ccdc6.all.counts.summary.tsv")
+```
+
+
+```{r LoadCounts1, warning=FALSE, message=FALSE, echo=FALSE}
+readtsv = function(fname, ...) { readr::read_tsv(fname, ...) %>% as.data.frame() }
+
+readCounts = function(fname) {
+  counts = readtsv(fname)
+  # Fix gene names to remove the version number (e.g. ".4" in ENSG00000223972.4)
+  gene_ids <- gsub("\\.[\\d]+", "", counts[,1], perl=T)
+  counts[,1] = gene_ids
+  rownames(counts) = gene_ids
+  counts
+}
+
+getTPMs = function(counts) {
+  rpK = apply(counts, MARGIN=2, FUN=function(x) x / gene.meta$length) * 1e3
+  tpm.mat = apply(rpK, MARGIN=2, FUN=function(x) x / sum(x)) * 1e6
+  tpm.mat
+}
+getExprSummary = function(mat) {
+  data.frame(gene_id = rownames(mat),
+             median = rowMedians(mat),
+             mean = rowMeans(mat),
+             sd = rowSds(mat))
+}
+
+counts.df = readCounts(counts.fname)
+gene.meta = counts.df[,c(1,2)]
+
+meta.df = read_tsv(meta.fname) %>% mutate(batch = as.factor(batch))
+#meta.df = meta.df %>% filter(!sample_name %in% excludeSamples)
+
+# Ensure the count columns are in the same order as the metadata rows
+counts.df = counts.df %>% select(gene_id, length, meta.df$sample_name)
+
+rawcounts.mat = counts.df %>% select(-gene_id, -length) %>% as.matrix()
+rownames(rawcounts.mat) = counts.df$gene_id
+
+mg_samples = meta.df %>% filter(cell_type == "microglia") %>% .$sample_name
+
+dds = DESeqDataSetFromMatrix(countData = rawcounts.mat,
+                             colData = meta.df,
+                             design = ~ 1)
+
+dds <- estimateSizeFactors(dds)
+
+# Extract the normalized counts
+normalized_counts <- counts(dds, normalized = T)
+
+# Transform with variance stabilizing transformation, and get the updated matrix
+vsd <- vst(dds, blind=T)
+
+tpm.mat = getTPMs(normalized_counts)
+tpm.df = cbind(data.frame(gene_id = rownames(tpm.mat)), tpm.mat)
+mg.tpm.avgs.df = getExprSummary(tpm.mat[, mg_samples])
+# Save TPMs for individual samples
+grch38_ensg_sym = grch38 %>% filter(!duplicated(ensgene)) %>% select(gene_id=ensgene, symbol)
+if (saveFiles) {
+  write.table(tpm.df %>% left_join(grch38_ensg_sym, by="gene_id") %>% select(gene_id, symbol, everything()),
+              file=file.path(outputPath, "sample.tpm.tsv"), sep="\t", quote=F, row.names=F, col.names=T, na="")
+}
+
+expressedGenes.mg = mg.tpm.avgs.df %>% filter(mean >= 1) %>% .$gene_id
+```
+
+
+## QC
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE, fig.width=8}
+selected_samples = meta.df %>% filter(grepl("B6_|_F2_|N6_", sample_name)) %>% .$sample_name
+
+counts.summary.df = readr::read_tsv(counts.summary.fname) %>%
+  filter(count > 0) %>%
+  left_join(meta.df %>% select(sample=sample_name, batch), by="sample") %>%
+  mutate(sample = str_replace(sample, "micro_", ""))
+counts.summary.totals = counts.summary.df %>% group_by(sample) %>% summarise(total = sum(count))
+
+counts.summary.df = counts.summary.df %>%
+  left_join(counts.summary.totals, by="sample")
+
+counts.summary.df$batch[is.na(counts.summary.df$batch)] = 2
+
+counts.summary.df = counts.summary.df %>% filter(grepl("B6_|F2_|N6_", sample)) %>% mutate(is_wt = grepl("B6_", sample))
+ggplot(counts.summary.df, aes(x=fct_reorder(sample, -total), y=count, fill=category, alpha=is_wt)) +
+  geom_bar(stat="identity") +
+  theme_bw() + ylab("Read count") + ggtitle("Number of reads") +
+  scale_alpha_manual(values=c(`TRUE`=0.75, `FALSE`=1)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), axis.title.x = element_blank())
+
+```
+
+Coverage looks even, with two WT samples having higher read count, and one lower.
+
+## CCDC6 expression
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+ccdc6_ensg = "ENSG00000108091"
+ccdc6.vsd = assay(vsd)[ccdc6_ensg, selected_samples]
+ccdc6.tpm = tpm.df[ccdc6_ensg, ] %>% select(-gene_id)
+ccdc6.df = data.frame(sample_name = names(ccdc6.vsd), vsd = ccdc6.vsd) %>%
+  left_join(data.frame(sample_name = names(ccdc6.tpm), tpm = as.numeric(ccdc6.tpm)), by="sample_name") %>%
+  left_join(meta.df, by="sample_name") %>%
+  arrange(tpm)
+#ggplot(ccdc6.df, aes(x=fct_reorder(sample_short, -vsd), y=vsd, fill=condition2)) +
+#  geom_bar(stat="identity") +
+#  theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+ggplot(ccdc6.df, aes(x=fct_reorder(sample_short, -tpm), y=tpm, fill=condition2)) +
+  geom_bar(stat="identity") +
+  theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Microglia CCDC6 expression") + ylab("CCDC6 TPM") + xlab("Sample name") +
+  scale_fill_discrete(name = "Condition")
+
+```
+
+There again seems to be no relationship between CCDC6 expression and enhancer SNP (rs1171832) HDR clones vs WT.
+
+## QC
+
+Examine sample correlations / clustering.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+meta.df = as.data.frame(meta.df)
+rownames(meta.df) = meta.df$sample_name
+
+# Compute the correlation between samples
+expr.mat = assay(vsd)[, selected_samples]
+colnames(expr.mat) = meta.df[colnames(expr.mat),]$sample_short
+vsd_cor <- cor(expr.mat)
+
+# Plot a heatmap. Seems that the metadata for annotation needs to have rownames.
+annot.df = meta.df %>% select(condition2)
+rownames(annot.df) = meta.df$sample_short
+pheatmap(vsd_cor, cluster_cols = T, cluster_rows = T, treeheight_col = 30,
+         annotation_col = annot.df,
+         show_colnames = F, fontsize = 9, main = "Microglia RNA-seq sample correlations")
+```
+
+Let's look at PCs.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+dds = DESeqDataSetFromMatrix(countData = rawcounts.mat[expressedGenes.mg, selected_samples],
+                             colData = meta.df %>% filter(sample_name %in% selected_samples),
+                             design = ~ condition2)
+
+dds <- estimateSizeFactors(dds)
+normalized_counts <- counts(dds, normalized = T)
+
+# Transform with variance stabilizing transformation, and get the updated matrix
+vsd <- vst(dds, blind=T)
+
+# Get the ntop most variable genes
+# ntop = 1000
+# rv <- rowVars(assay(vsd))
+# varGenes <- order(rv, decreasing=TRUE)[seq_len(min(ntop, length(rv)))]
+# pca.result = pcaMethods::pca(t(assay(vsd)[varGenes, ]), nPcs = 5)
+
+expr.vsd = assay(vsd)[expressedGenes.mg, ]
+pca.result = pcaMethods::pca(t(expr.vsd), nPcs = 5)
+#plotPCA(vsd, intgroup="condition") + ggtitle("PCA of normalized counts")
+pcs = data.frame(scores(pca.result))
+pcs$sample_name = rownames(pcs)
+pcs.meta = dplyr::left_join(pcs, meta.df, by="sample_name")
+
+PCnames = factor(names(pca.result@R2), levels=c("PC1", "PC2", "PC3", "PC4", "PC5"))
+ggplot(data.frame(R2=pca.result@R2, PC=PCnames), aes(x=PC, y=R2)) +
+  geom_bar(stat="identity") + ggtitle("Variance explained by RNA-seq PCs") + theme_bw()
+
+ggplot(pcs.meta, aes(x=PC1, y=PC2, col=condition)) + geom_point(alpha=0.7, size=3) + geom_text(aes(label = clone), size=2.6, hjust=1, nudge_x=-0.5) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC1, y=PC3, col=condition)) + geom_point(alpha=0.7, size=3) + geom_text(aes(label = clone), size=2.6, hjust=1, nudge_x=-0.5) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC2, y=PC3, col=condition)) + geom_point(alpha=0.7, size=3) + geom_text(aes(label = clone), size=2.6, hjust=1, nudge_x=-0.5) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC2, y=PC4, col=condition)) + geom_point(alpha=0.7, size=3) + geom_text(aes(label = clone), size=2.6, hjust=1, nudge_x=-0.5) + theme_bw(12)
+ggplot(pcs.meta, aes(x=PC3, y=PC4, col=condition)) + geom_point(alpha=0.7, size=3) + geom_text(aes(label = clone), size=2.6, hjust=1, nudge_x=-0.5) + theme_bw(12)
+
+```
+
+WT samples are on average lower on PC1 and higher on PC3 (being in the middle on PC2). We can look at GO terms enriched in these PCs.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE, fig.width=8}
+pca = prcomp(t(assay(vsd)[expressedGenes.mg,]))
+gs_pca = gosummaries(pca, components=1:4, custom_bg = expressedGenes.mg)
+plot(gs_pca, components = 1, fontsize = 10)
+plot(gs_pca, components = 2, fontsize = 10)
+plot(gs_pca, components = 3, fontsize = 10)
+#plot(gs_pca, components = 4, fontsize = 10)
+```
+
+
+```{r PlotDE, warning=FALSE, message=FALSE, echo=FALSE}
+plotDE = function(deseq.res.df, title, sigThreshold=0.01, xlim=NULL, ylim=NULL, maxLabels=100, labelSize=2.2) {
+  p = ggplot(deseq.res.df %>% mutate(sig=(padj < sigThreshold)), aes(x=baseMean, y=log2FoldChange, col=sig)) +
+    geom_point(size=0.5) +
+    scale_color_manual(values=c("black", "red", "dodgerblue")) +
+    theme_bw(14) +
+    scale_x_log10() + xlab("DESeq2 baseMean expression") +
+    theme(legend.position="none") +
+    ggtitle(title)
+  
+  # Determine the points to label by fitting a spline to the points and
+  # adjusting it until we get the desired number of points beyond the line
+  deseq.res.sig = deseq.res.df %>% filter(padj < sigThreshold) %>%
+    arrange(baseMean)
+  deseq.res.sig.neg = deseq.res.sig %>% filter(log2FoldChange < 0)
+  deseq.res.sig.pos = deseq.res.sig %>% filter(log2FoldChange > 0)
+  fit.neg <- smooth.spline(log10(deseq.res.sig.neg$baseMean), deseq.res.sig.neg$log2FoldChange, df=7)
+  fit.pos <- smooth.spline(log10(deseq.res.sig.pos$baseMean), deseq.res.sig.pos$log2FoldChange, df=7)
+  
+  if (nrow(deseq.res.sig) <= maxLabels) {
+    deseq.res.sig.plot = deseq.res.sig
+  } else {
+    # Fit splines to the significant genes, and adjust these to get the
+    # desired number of points labelled
+    factor = 0.9
+    offset = -0.2
+    numlabels = sum(deseq.res.sig.pos$log2FoldChange > (predict(fit.pos, log10(deseq.res.sig.pos$baseMean))$y * factor + offset)) +
+      sum(deseq.res.sig.neg$log2FoldChange < (predict(fit.neg, log10(deseq.res.sig.neg$baseMean))$y * factor - offset))
+    while (numlabels > maxLabels) {
+      offset = offset + 0.1
+      factor = factor * 1.04
+      numlabels = sum(deseq.res.sig.pos$log2FoldChange > (predict(fit.pos, log10(deseq.res.sig.pos$baseMean))$y * factor + offset)) +
+        sum(deseq.res.sig.neg$log2FoldChange < (predict(fit.neg, log10(deseq.res.sig.neg$baseMean))$y * factor - offset))
+    }
+    deseq.res.sig.plot = rbind(deseq.res.sig.pos[deseq.res.sig.pos$log2FoldChange > (predict(fit.pos, log10(deseq.res.sig.pos$baseMean))$y * factor + offset),],
+                               deseq.res.sig.neg[deseq.res.sig.neg$log2FoldChange < (predict(fit.neg, log10(deseq.res.sig.neg$baseMean))$y * factor - offset),])
+  }
+  p = p + annotate(geom="text", x=deseq.res.sig.plot$baseMean, y=deseq.res.sig.plot$log2FoldChange,
+                   label=deseq.res.sig.plot$gene_name, col="blue", hjust = -0.2, size=labelSize) 
+  #p = p + geom_line(aes(10^x, y*factor - offset), data=as.data.frame(fit.neg[c("x","y")]), col="grey90") +
+  #  geom_line(aes(10^x, y*factor + offset), data=as.data.frame(fit.pos[c("x","y")]), col="grey90")
+  if (!is.null(xlim) | !is.null(ylim)) {
+    p = p + coord_cartesian(xlim=xlim, ylim=ylim)
+  }
+  return(p)
+}
+```
+
+
+## Differential expression: EN HDR vs WT
+
+Let's get differentially expressed genes between EN HDR (rs1171832) clones (N6, F2, E10) and WT (B6, Kolf2, but excluding PTK2B_Kolf2).
+
+Erica suggested determining DE genes between N6/F2 and B6 (WT), and then also between E10 and Kolf2 (WT), since these samples cluster together in a PCA plot. (That is, E10 and Kolf2_WT cluster together, and the other 2 HDR clones and B6_WT cluster together.) To me, it only makes sense to do this by including all together in a single model, rather than doing two DE comparisons and looking for the overlap. I can include a variable that indicates which cluster each sample is a part of, which is then included in the single DE test.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+selected_samples = meta.df %>% filter(grepl("B6_|_F2_|N6_|E10_|CCDC6_KOLF", sample_name)) %>% .$sample_name
+meta.sel.df = meta.df %>%
+  filter(grepl("B6_|_F2_|N6_|E10_|CCDC6_KOLF", sample_name)) %>%
+  group_by(sample_name) %>%
+  mutate(cluster = if_else(grepl("B6_|_F2_|N6_", sample_name), "1", "2")) %>%
+  ungroup()
+
+dds = DESeqDataSetFromMatrix(countData = rawcounts.mat[expressedGenes.mg, selected_samples],
+                             colData = meta.sel.df %>% filter(sample_name %in% selected_samples),
+                             design = ~ cluster + condition2)
+
+dds <- estimateSizeFactors(dds)
+normalized_counts <- counts(dds, normalized = T)
+
+# Transform with variance stabilizing transformation, and get the updated matrix
+vsd <- vst(dds, blind=T)
+
+dds <- DESeq(dds, parallel = T)
+plotDispEsts(dds, main="Diffexp dispersion estimates")
+
+hdr.res <- results(dds, contrast = c("condition2", "EN_HDR", "WT"), alpha = 0.05)
+hdr.res <- lfcShrink(dds, contrast =  c("condition2", "EN_HDR", "WT"), res = hdr.res, parallel = T)
+
+summary(hdr.res)
+
+# Add annotations to all genes
+grch38_dedup = grch38 %>% select(-entrez) %>% filter(!duplicated(ensgene))
+hdr.res.df = data.frame(hdr.res) %>%
+  rownames_to_column(var = "gene_id") %>%
+  arrange(padj) %>% filter(!duplicated(gene_id)) %>%
+  left_join(grch38_dedup %>% select(ensgene, symbol, biotype, description), by=c("gene_id" = "ensgene"))
+
+ggplot(hdr.res.df) + 
+  geom_point(aes(x = log2FoldChange, y = -log10(padj), color = padj < 0.05)) + 
+  xlab("log2 fold change") + 
+  ylab("-log10 adjusted p-value") + 
+  theme_bw() +
+  theme(legend.position = "none", 
+        plot.title = element_text(size = rel(1.5), hjust = 0.5), 
+        axis.title = element_text(size = rel(1.25))) +
+  ggtitle("Microglia diffexp HOM HDR:WT volcano plot")
+```
+
+We have 677 DE genes at FDR 5%, with 80% of these upregulated. However, only 173 of these are found at FDR 1%. Let's see some of the DE genes.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE, fig.height=6}
+#plotMA(hdr.res, ylim=c(-1, 1), main="Diffexp HDR Hom:WT MA plot")
+plotDE(hdr.res.df %>% mutate(gene_name = symbol), "Microglia diffexp HOM HDR:WT MA plot", sigThreshold = .01, xlim=c(10, 5e5))
+
+if (saveFiles) {
+  hdr.res.df %>% write.table(file=file.path(outputPath, "microglia_Hom_HDR_vs_WT.excl_PTK2B_WT.DE_genes.tsv"), sep="\t", quote=F, row.names=F, col.names=T)
+  hdr.res.df %>% filter(padj < 0.05) %>% write.table(file=file.path(outputPath, "microglia_Hom_HDR_vs_WT.excl_PTK2B_WT.DE_genes.sig.tsv"), sep="\t", quote=F, row.names=F, col.names=T)
+}
+```
+
+
+Let's look at the DE genes across edit types.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+# Subset normalized counts to significant genes
+hdr.res.df = hdr.res.df %>% filter(padj < 0.05)
+sig_norm_counts <- normalized_counts[hdr.res.df$gene_id, selected_samples]
+rownames(meta.sel.df) = meta.sel.df$sample_name
+colnames(sig_norm_counts) = meta.sel.df[colnames(sig_norm_counts),]$sample_short
+
+# Choose heatmap color palette
+heat_colors <- brewer.pal(n = 6, name = "YlOrRd")
+
+annot.df = select(meta.sel.df, condition2)
+rownames(annot.df) = meta.sel.df$sample_short
+
+pheatmap(sig_norm_counts,
+         color = heat_colors,
+         cluster_rows = T,
+         show_rownames = F,
+         fontsize = 9,
+         treeheight_col = 30,
+         annotation_col = as.data.frame(annot.df),
+         scale = "row",
+         main = "Microglia diffexp genes HOM HDR:WT")
+```
+
+Look at GO enrichment of the DE genes.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE, fig.width=8}
+genesUp = (hdr.res.df %>% arrange(padj) %>% filter(log2FoldChange > 0) %>%
+                             filter(between(row_number(), 1, 1000)) %>% .$gene_id)
+genesDown = (hdr.res.df %>% arrange(padj) %>% filter(log2FoldChange < 0) %>%
+                               filter(between(row_number(), 1, 1000)) %>% .$gene_id)
+gl = list(DiffExpInHDR = list(Up=genesUp, Down=genesDown)) #
+#gs1 = gosummaries(gl)
+#plot(gs1, fontsize = 12)
+# Better to use a background expressed gene set
+gs2 = gosummaries(gl, custom_bg = expressedGenes.mg)
+plot(gs2, fontsize = 10)
+
+gp.up = gprofiler(query = genesUp, custom_bg = expressedGenes.mg, organism = "hsapiens")
+gp.down = gprofiler(query = genesDown, custom_bg = expressedGenes.mg, organism = "hsapiens")
+if (saveFiles) {
+  gp.up %>% write.table(file=file.path(outputPath, "EN_HDR_vs_WT.excl_PTK2B_WT.upregulated.gprofiler.tsv"), sep="\t", quote=F, row.names=F, col.names=T)
+  gp.down %>% write.table(file=file.path(outputPath, "EN_HDR_vs_WT.excl_PTK2B_WT.downregulated.gprofiler.tsv"), sep="\t", quote=F, row.names=F, col.names=T)
+}
+```
+
