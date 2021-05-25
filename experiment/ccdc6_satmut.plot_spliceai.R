@@ -1,8 +1,12 @@
 library(tidyverse)
 library(gridExtra)
+library(ggseqlogo)
 
 dir = "/Users/jeremys/work/opentargets/experiment/transcribed/CCDC6_satmut_genie/analysis/"
 setwd(dir)
+
+file_path = file.path(dir, "CCDC6_satmut_genie.allHDR.lmer.region_stats.tsv")
+file_path = file.path(dir, "CCDC6_satmut_genie.HDR.by_batch.region_stats.tsv")
 
 spliceai.df = readr::read_tsv(file.path(dir, "spliceai.ccdc6_region.tsv")) %>%
   rename(pos_hg37 = pos)
@@ -108,7 +112,7 @@ p.spliceai.seqlogo = ggseqlogo(getSeqLogoData(merged.df, "DS_DL"), method='custo
 
 
 genie.logo.data = merged.df %>% select(pos_hg38, alt, hdr.effect) %>%
-  spread(key = alt, value = col) %>%
+  spread(key = alt, value = hdr.effect) %>%
   filter(59906118 <= pos_hg38, pos_hg38 <= 59906122)
 genie.logo.data[is.na(genie.logo.data)] = 1
 genie.logo.data = 1 / (genie.logo.data %>% select(-pos_hg38) %>% t() %>% as.matrix())
